@@ -505,7 +505,7 @@ class MorePage extends StatelessWidget {
 
 class SettingsPage extends StatefulWidget {
   final String organizationName;
-  final ValueChanged<String> onOrganizationChanged;
+  final Future<void> Function(String) onOrganizationChanged;
 
   const SettingsPage({
     super.key,
@@ -540,7 +540,7 @@ class _SettingsPageState extends State<SettingsPage> {
       );
       return;
     }
-    widget.onOrganizationChanged(value);
+    await widget.onOrganizationChanged(value);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Название организации сохранено')),
     );
