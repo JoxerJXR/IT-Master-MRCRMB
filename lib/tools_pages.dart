@@ -371,10 +371,52 @@ class _BackupPageState extends State<BackupPage> {
       final picked = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['db'], withData: false);
       final path = picked?.files.single.path;
       if (path == null) return;
-      await CartridgeDatabase.instance.closeDatabase();
+
+      // Validate the selected SQLite file before touching the current database.
+      final candidate = await openDatabase(path, readOnly: true);
+      try {
+        final integrity = await candidate.rawQuery('PRAGMA integrity_check');
+        final integrityResult = integrity.isEmpty ? '' : integrity.first.values.first.toString();
+        if (integrityResult.toLowerCase() != 'ok') {
+          throw Exception('Файл повреждён: проверка SQLite не пройдена.');
+        }
+        final tables = await candidate.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table'",
+        );
+        final names = tables.map((row) => row['name'].toString()).toSet();
+        if (!names.containsAll({'cartridges', 'movements'})) {
+          throw Exception('Выбранный файл не является резервной копией IT-Мастер.');
+        }
+      } finally {
+        await candidate.close();
+      }
+
       final dbPath = p.join(await getDatabasesPath(), 'it_master_local.db');
-      await File(path).copy(dbPath);
-      if (mounted) setState(() => message = 'База восстановлена. Перезапустите приложение, чтобы обновить все разделы.');
+      final current = File(dbPath);
+      final tempDir = await getTemporaryDirectory();
+      final safetyCopy = File(p.join(
+        tempDir.path,
+        'IT-Master-before-restore-${DateTime.now().millisecondsSinceEpoch}.db',
+      ));
+      await CartridgeDatabase.instance.closeDatabase();
+
+      // Keep a safety copy so a failed replacement can be rolled back.
+      final hadCurrent = await current.exists();
+      if (hadCurrent) await current.copy(safetyCopy.path);
+      try {
+        await File(path).copy(dbPath);
+        await CartridgeDatabase.instance.database;
+        await CartridgeDatabase.instance.closeDatabase();
+      } catch (_) {
+        if (hadCurrent && await safetyCopy.exists()) {
+          await safetyCopy.copy(dbPath);
+        }
+        rethrow;
+      }
+      if (mounted) {
+        setState(() => message =
+          'База проверена и восстановлена. Создана страховочная копия предыдущей базы. Перезапустите приложение, чтобы обновить все разделы.');
+      }
     } catch (e) {
       if (mounted) setState(() => message = 'Ошибка восстановления: $e');
     } finally { if (mounted) setState(() => busy = false); }
