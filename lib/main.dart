@@ -10,6 +10,7 @@ import 'global_search.dart';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -59,6 +60,10 @@ class _MainScreenState extends State<MainScreen> {
   int selectedIndex = 0;
   String organizationName = '';
   bool _loadingOrganization = true;
+  bool _pinLoading = true;
+  bool _pinUnlocked = false;
+  static const _secureStorage = FlutterSecureStorage();
+  static const _pinKey = 'it_master_app_pin';
 
   @override
   void initState() {
@@ -67,12 +72,15 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _loadOrganization() async {
+    final savedPin = await _secureStorage.read(key: _pinKey);
     final preferences = await SharedPreferences.getInstance();
     final savedName = preferences.getString(_organizationKey)?.trim() ?? '';
     if (!mounted) return;
     setState(() {
       organizationName = savedName;
       _loadingOrganization = false;
+      _pinLoading = false;
+      _pinUnlocked = savedPin == null || savedPin.isEmpty;
     });
     if (savedName.isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -80,6 +88,8 @@ class _MainScreenState extends State<MainScreen> {
       });
     }
   }
+
+  Future<bool> _checkPin(String value) async { final saved = await _secureStorage.read(key: _pinKey); return saved != null && saved == value; }
 
   Future<void> _saveOrganization(String value) async {
     final normalized = value.trim();
@@ -157,6 +167,8 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_pinLoading || _loadingOrganization) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (!_pinUnlocked) return PinUnlockPage(onUnlock: (pin) async { final ok = await _checkPin(pin); if (ok && mounted) setState(() => _pinUnlocked = true); return ok; });
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -527,11 +539,326 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   late final TextEditingController _organizationController;
+  static const _secureStorage = FlutterSecureStorage();
+  static const _pinKey = 'it_master_app_pin';
+  bool _pinEnabled = false;
+  bool _pinReady = false;
 
   @override
   void initState() {
     super.initState();
     _organizationController = TextEditingController(text: widget.organizationName);
+    _loadPinState();
+  }
+
+
+  Future<void> _loadPinState() async {
+    final pin = await _secureStorage.read(key: _pinKey);
+    if (mounted) setState(() { _pinEnabled = pin != null && pin.isNotEmpty; _pinReady = true; });
+  }
+
+  Future<String?> _askPin(String title) async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(context: context, builder: (ctx) => AlertDialog(
+      title: Text(title),
+      content: TextField(controller: controller, autofocus: true, obscureText: true, keyboardType: TextInputType.number, maxLength: 8,
+        decoration: const InputDecoration(labelText: 'PIN-код (4–8 цифр)', border: OutlineInputBorder())),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена')),
+        FilledButton(onPressed: () { if (RegExp(r'^\\d{4,8}
+    super.dispose();
+  }
+
+  Future<void> _saveOrganization() async {
+    final value = _organizationController.text.trim();
+    if (value.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Введите название организации')),
+      );
+      return;
+    }
+    await widget.onOrganizationChanged(value);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Название организации сохранено')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Настройки')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const Text(
+            'Организация',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _organizationController,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              labelText: 'Название организации',
+              hintText: 'Введите название организации',
+              prefixIcon: Icon(Icons.business_outlined),
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (_) => _saveOrganization(),
+          ),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: _saveOrganization,
+            icon: const Icon(Icons.save_outlined),
+            label: const Text('Сохранить название'),
+          ),
+          const SizedBox(height: 16),
+
+          const SizedBox(height: 18),
+          const Text('Защита приложения', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 6),
+          if (!_pinReady) const LinearProgressIndicator() else Card(child: Column(children: [
+            SwitchListTile(
+              secondary: const Icon(Icons.lock_outline),
+              title: const Text('Запрашивать PIN при запуске'),
+              subtitle: Text(_pinEnabled ? 'Защита включена' : 'Защита отключена'),
+              value: _pinEnabled,
+              onChanged: (enabled) => enabled ? _enablePin() : _disablePin(),
+            ),
+            if (_pinEnabled) ListTile(leading: const Icon(Icons.password), title: const Text('Изменить PIN-код'),
+              trailing: const Icon(Icons.chevron_right), onTap: _changePin),
+          ])),
+          const ListTile(
+            leading: Icon(Icons.palette_outlined),
+            title: Text('Оформление'),
+            subtitle: Text('Автоматически по настройкам телефона'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.backup_outlined),
+            title: const Text('Резервное копирование'),
+            subtitle: const Text('Создание и восстановление копии базы'),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupPage())),
+          ),
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('О программе'),
+            subtitle: Text('IT-Мастер · Версия $appVersion'),
+          ),
+          const SizedBox(height: 12),
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'IT-Мастер · ГБУЗ «МРЦРМБ» ЛНР\nДанные приложения хранятся локально на устройстве. '
+                'Перед переносом на другой телефон создавайте резервную копию.',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardSummary extends StatefulWidget {
+  const _DashboardSummary();
+
+  @override
+  State<_DashboardSummary> createState() => _DashboardSummaryState();
+}
+
+class _DashboardSummaryState extends State<_DashboardSummary> {
+  late Future<Map<String, int>> _summary;
+
+  @override
+  void initState() {
+    super.initState();
+    _summary = _loadSummary();
+  }
+
+  Future<Map<String, int>> _loadSummary() async {
+    final db = await CartridgeDatabase.instance.database;
+    // Create tables if necessary so the first app launch is safe.
+    await db.execute("""CREATE TABLE IF NOT EXISTS service_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT '', department TEXT NOT NULL DEFAULT '',
+      requester TEXT NOT NULL DEFAULT '', room TEXT NOT NULL DEFAULT '',
+      category TEXT NOT NULL DEFAULT 'Другое', equipment TEXT NOT NULL DEFAULT '',
+      inventory_number TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '',
+      priority TEXT NOT NULL DEFAULT 'Обычный', executor TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'Новая', resolution TEXT NOT NULL DEFAULT '')""");
+    await db.execute("""CREATE TABLE IF NOT EXISTS it_equipment (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'Другое', model TEXT NOT NULL DEFAULT '',
+      inventory_number TEXT NOT NULL DEFAULT '', serial_number TEXT NOT NULL DEFAULT '',
+      location TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'Исправно',
+      fault_reason TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT '')""");
+    await db.execute("""CREATE TABLE IF NOT EXISTS revision_employees (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, full_name TEXT NOT NULL,
+      department TEXT NOT NULL DEFAULT '', position TEXT NOT NULL DEFAULT '',
+      active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT '')""");
+    await db.execute("""CREATE TABLE IF NOT EXISTS revision_assets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'Другое', model TEXT NOT NULL DEFAULT '',
+      inventory_number TEXT NOT NULL DEFAULT '', serial_number TEXT NOT NULL DEFAULT '',
+      note TEXT NOT NULL DEFAULT '', employee_id INTEGER,
+      status TEXT NOT NULL DEFAULT 'На руках', created_at TEXT NOT NULL DEFAULT '')""");
+    await db.execute("""CREATE TABLE IF NOT EXISTS it_consumables (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'Другое', quantity INTEGER NOT NULL DEFAULT 0,
+      unit TEXT NOT NULL DEFAULT 'шт.', minimum INTEGER NOT NULL DEFAULT 0,
+      location TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT '')""");
+
+    Future<int> count(String sql, [List<Object?> args = const []]) async {
+      final rows = await db.rawQuery(sql, args);
+      return (rows.first['n'] as num?)?.toInt() ?? 0;
+    }
+
+    final values = await Future.wait<int>([
+      count("SELECT COUNT(*) AS n FROM service_requests WHERE status IN ('Новая','В работе','Ожидает')"),
+      count("SELECT COUNT(*) AS n FROM it_equipment WHERE status='Неисправно'"),
+      count("SELECT COUNT(*) AS n FROM cartridges WHERE status='Готов к выдаче'"),
+      count("SELECT COUNT(*) AS n FROM revision_assets WHERE status='На руках'"),
+      count("SELECT COUNT(*) AS n FROM it_consumables WHERE quantity <= minimum"),
+    ]);
+    return {
+      'requests': values[0],
+      'faulty': values[1],
+      'cartridges': values[2],
+      'assets': values[3],
+      'lowStock': values[4],
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Сводка по работе', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 10),
+        FutureBuilder<Map<String, int>>(
+          future: _summary,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Padding(
+                padding: EdgeInsets.all(18),
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
+            if (snapshot.hasError) {
+              return Card(
+                child: ListTile(
+                  leading: const Icon(Icons.info_outline),
+                  title: const Text('Сводка пока недоступна'),
+                  subtitle: const Text('Попробуйте обновить данные.'),
+                  trailing: IconButton(
+                    tooltip: 'Повторить',
+                    onPressed: () => setState(() => _summary = _loadSummary()),
+                    icon: const Icon(Icons.refresh),
+                  ),
+                ),
+              );
+            }
+            final data = snapshot.data!;
+            return Column(
+              children: [
+                Row(children: [
+                  Expanded(child: _SummaryTile(label: 'Активные заявки', value: data['requests']!, icon: Icons.assignment_outlined)),
+                  const SizedBox(width: 8),
+                  Expanded(child: _SummaryTile(label: 'Неисправная техника', value: data['faulty']!, icon: Icons.warning_amber_rounded)),
+                ]),
+                Row(children: [
+                  Expanded(child: _SummaryTile(label: 'Готовые картриджи', value: data['cartridges']!, icon: Icons.print_outlined)),
+                  const SizedBox(width: 8),
+                  Expanded(child: _SummaryTile(label: 'Имущество на руках', value: data['assets']!, icon: Icons.devices_other)),
+                ]),
+                Row(children: [
+                  Expanded(child: _SummaryTile(label: 'Низкий остаток', value: data['lowStock']!, icon: Icons.inventory_2_outlined)),
+                  const SizedBox(width: 8),
+                  const Expanded(child: SizedBox.shrink()),
+                ]),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _SummaryTile extends StatelessWidget {
+  final String label;
+  final int value;
+  final IconData icon;
+
+  const _SummaryTile({required this.label, required this.value, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 13),
+        child: Row(
+          children: [
+            Icon(icon, color: Theme.of(context).colorScheme.primary, size: 25),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('$value', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                  Text(label, style: Theme.of(context).textTheme.bodySmall, maxLines: 2, overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+).hasMatch(controller.text)) Navigator.pop(ctx, controller.text); }, child: const Text('Продолжить'))],
+    ));
+    controller.dispose();
+    return result;
+  }
+
+  Future<void> _enablePin() async {
+    final pin = await _askPin('Установить PIN-код');
+    if (pin == null) return;
+    final confirm = await _askPin('Повторите PIN-код');
+    if (confirm == null) return;
+    if (pin != confirm) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PIN-коды не совпадают'))); return; }
+    await _secureStorage.write(key: _pinKey, value: pin);
+    if (mounted) setState(() => _pinEnabled = true);
+  }
+
+  Future<bool> _verifyCurrentPin() async {
+    final current = await _askPin('Введите действующий PIN');
+    if (current == null) return false;
+    final saved = await _secureStorage.read(key: _pinKey);
+    if (current != saved) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Неверный PIN-код'))); return false; }
+    return true;
+  }
+
+  Future<void> _changePin() async {
+    if (!await _verifyCurrentPin()) return;
+    final pin = await _askPin('Новый PIN-код');
+    if (pin == null) return;
+    final confirm = await _askPin('Подтвердите новый PIN');
+    if (confirm == null) return;
+    if (pin != confirm) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PIN-коды не совпадают'))); return; }
+    await _secureStorage.write(key: _pinKey, value: pin);
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PIN-код изменён')));
+  }
+
+  Future<void> _disablePin() async {
+    if (!await _verifyCurrentPin()) return;
+    await _secureStorage.delete(key: _pinKey);
+    if (mounted) setState(() => _pinEnabled = false);
   }
 
   @override
@@ -776,4 +1103,42 @@ class _SummaryTile extends StatelessWidget {
       ),
     );
   }
+}
+
+
+class PinUnlockPage extends StatefulWidget {
+  final Future<bool> Function(String) onUnlock;
+  const PinUnlockPage({super.key, required this.onUnlock});
+  @override
+  State<PinUnlockPage> createState() => _PinUnlockPageState();
+}
+class _PinUnlockPageState extends State<PinUnlockPage> {
+  final _controller = TextEditingController();
+  bool _checking = false;
+  String? _error;
+  @override
+  void dispose() { _controller.dispose(); super.dispose(); }
+  Future<void> _unlock() async {
+    if (_checking) return;
+    setState(() { _checking = true; _error = null; });
+    final valid = await widget.onUnlock(_controller.text);
+    if (!mounted) return;
+    setState(() { _checking = false; if (!valid) { _error = 'Неверный PIN-код'; _controller.clear(); } });
+  }
+  @override
+  Widget build(BuildContext context) => Scaffold(body: Center(child: ConstrainedBox(
+    constraints: const BoxConstraints(maxWidth: 340), child: Padding(padding: const EdgeInsets.all(24),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.lock_rounded, size: 64, color: Theme.of(context).colorScheme.primary),
+        const SizedBox(height: 18),
+        const Text('IT-Мастер заблокирован', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8), const Text('Введите PIN-код для продолжения'),
+        const SizedBox(height: 20),
+        TextField(controller: _controller, autofocus: true, obscureText: true, keyboardType: TextInputType.number,
+          maxLength: 8, decoration: InputDecoration(labelText: 'PIN-код', errorText: _error, border: const OutlineInputBorder()),
+          onSubmitted: (_) => _unlock()),
+        const SizedBox(height: 12),
+        SizedBox(width: double.infinity, child: FilledButton(onPressed: _checking ? null : _unlock,
+          child: _checking ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Разблокировать'))),
+      ])))));
 }
