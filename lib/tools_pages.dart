@@ -310,17 +310,53 @@ class _ReportsPageState extends State<ReportsPage> {
   Map<String, int> stats = {};
   bool loading = true;
   bool exporting = false;
+  String? loadError;
+
+  Future<void> _ensureReportTables(Database db) async {
+    await db.execute("""CREATE TABLE IF NOT EXISTS it_equipment (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'Другое', model TEXT NOT NULL DEFAULT '',
+      inventory_number TEXT NOT NULL DEFAULT '', serial_number TEXT NOT NULL DEFAULT '',
+      location TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'Исправно',
+      fault_reason TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT '')""");
+    await db.execute("""CREATE TABLE IF NOT EXISTS service_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT '', department TEXT NOT NULL DEFAULT '',
+      requester TEXT NOT NULL DEFAULT '', room TEXT NOT NULL DEFAULT '',
+      category TEXT NOT NULL DEFAULT 'Другое', equipment TEXT NOT NULL DEFAULT '',
+      inventory_number TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '',
+      priority TEXT NOT NULL DEFAULT 'Обычный', executor TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'Новая', resolution TEXT NOT NULL DEFAULT '')""");
+    await db.execute("""CREATE TABLE IF NOT EXISTS revision_employees (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, full_name TEXT NOT NULL,
+      department TEXT NOT NULL DEFAULT '', position TEXT NOT NULL DEFAULT '',
+      active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT '')""");
+    await db.execute("""CREATE TABLE IF NOT EXISTS revision_assets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'Другое', model TEXT NOT NULL DEFAULT '',
+      inventory_number TEXT NOT NULL DEFAULT '', serial_number TEXT NOT NULL DEFAULT '',
+      note TEXT NOT NULL DEFAULT '', employee_id INTEGER,
+      status TEXT NOT NULL DEFAULT 'На руках', created_at TEXT NOT NULL DEFAULT '')""");
+    await db.execute("""CREATE TABLE IF NOT EXISTS it_consumables (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'Другое', quantity INTEGER NOT NULL DEFAULT 0,
+      unit TEXT NOT NULL DEFAULT 'шт.', minimum INTEGER NOT NULL DEFAULT 0,
+      location TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT '')""");
+  }
 
   Future<int> _count(Database db, String table, {String? where}) async {
-    try {
-      final rows = await db.rawQuery('SELECT COUNT(*) AS n FROM $table${where == null ? '' : ' WHERE $where'}');
-      return Sqflite.firstIntValue(rows) ?? 0;
-    } catch (_) { return 0; }
+    final rows = await db.rawQuery('SELECT COUNT(*) AS n FROM $table${where == null ? '' : ' WHERE $where'}');
+    return Sqflite.firstIntValue(rows) ?? 0;
   }
 
   Future<void> _load() async {
-    final db = await CartridgeDatabase.instance.database;
-    final values = <String, int>{
+    if (mounted) setState(() { loading = true; loadError = null; });
+    try {
+      final db = await CartridgeDatabase.instance.database;
+      await _ensureReportTables(db);
+      final values = <String, int>{
       'Картриджи': await _count(db, 'cartridges'),
       'Картриджи на заправке': await _count(db, 'cartridges', where: "status='На заправке'"),
       'Картриджи готовы к выдаче': await _count(db, 'cartridges', where: "status='Готов к выдаче'"),
@@ -335,8 +371,11 @@ class _ReportsPageState extends State<ReportsPage> {
       'Имущество на складе': await _count(db, 'revision_assets', where: "status='На складе'"),
       'Расходные материалы': await _count(db, 'it_consumables'),
       'Расходники с низким остатком': await _count(db, 'it_consumables', where: 'quantity <= minimum'),
-    };
-    if (mounted) setState(() { stats = values; loading = false; });
+      };
+      if (mounted) setState(() { stats = values; loading = false; loadError = null; });
+    } catch (e) {
+      if (mounted) setState(() { loading = false; loadError = 'Не удалось загрузить отчёт: $e'; });
+    }
   }
 
   Future<void> _beginExport() async {
@@ -427,7 +466,16 @@ class _ReportsPageState extends State<ReportsPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Отчёты и статистика')),
-    body: loading ? const Center(child: CircularProgressIndicator()) : RefreshIndicator(
+    body: loading ? const Center(child: CircularProgressIndicator()) : loadError != null
+        ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(
+            mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.error_outline, size: 42),
+              const SizedBox(height: 12),
+              Text(loadError!, textAlign: TextAlign.center),
+              const SizedBox(height: 12),
+              FilledButton.icon(onPressed: _load, icon: const Icon(Icons.refresh), label: const Text('Повторить')),
+            ])))
+        : RefreshIndicator(
       onRefresh: _load,
       child: ListView(padding: const EdgeInsets.all(16), children: [
         const Text('Текущие показатели локальной базы данных. Экспортируйте сводку для передачи или печати.'),
