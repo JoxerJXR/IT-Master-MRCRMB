@@ -58,6 +58,14 @@ class CartridgeDatabase {
     return _database!;
   }
 
+  Future<void> closeDatabase() async {
+    final current = _database;
+    if (current != null) {
+      await current.close();
+      _database = null;
+    }
+  }
+
   Future<List<Map<String, Object?>>> getCartridges() async {
     final db = await database;
     return db.query('cartridges', orderBy: 'id DESC');
