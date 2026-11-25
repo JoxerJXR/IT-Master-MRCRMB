@@ -303,6 +303,7 @@ class DashboardCard extends StatelessWidget {
             ),
           ],
         ),
+        ),
       ),
     );
   }
