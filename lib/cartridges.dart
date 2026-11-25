@@ -62,6 +62,12 @@ class CartridgeDatabase {
     return db.query('cartridges', orderBy: 'id DESC');
   }
 
+  Future<Map<String, Object?>?> getCartridge(int id) async {
+    final db = await database;
+    final rows = await db.query('cartridges', where: 'id = ?', whereArgs: [id], limit: 1);
+    return rows.isEmpty ? null : rows.first;
+  }
+
   Future<List<Map<String, Object?>>> getMovements(int cartridgeId) async {
     final db = await database;
     return db.query(
@@ -262,7 +268,7 @@ class _CartridgesPageState extends State<CartridgesPage> {
                     segments: const [
                       ButtonSegment(value: 'Все', label: Text('Все')),
                       ButtonSegment(value: 'Принят', label: Text('Приняты')),
-                      ButtonSegment(value: 'На заправке', label: Text('На заправке')),
+                      ButtonSegment(value: 'На заправке', label: Text('Заправка')),
                     ],
                     selected: {filter},
                     onSelectionChanged: (value) => setState(() => filter = value.first),
@@ -491,10 +497,11 @@ class CartridgeDetailsPage extends StatefulWidget {
 
 class _CartridgeDetailsPageState extends State<CartridgeDetailsPage> {
   List<Map<String, Object?>> movements = [];
+  Map<String, Object?>? currentCartridge;
   bool loading = true;
 
   int get id => widget.cartridge['id'] as int;
-  String get status => widget.cartridge['status'] as String;
+  String get status => (currentCartridge?['status'] ?? widget.cartridge['status']) as String;
 
   @override
   void initState() {
@@ -503,10 +510,14 @@ class _CartridgeDetailsPageState extends State<CartridgeDetailsPage> {
   }
 
   Future<void> _load() async {
-    final rows = await CartridgeDatabase.instance.getMovements(id);
+    final result = await Future.wait([
+      CartridgeDatabase.instance.getMovements(id),
+      CartridgeDatabase.instance.getCartridge(id),
+    ]);
     if (!mounted) return;
     setState(() {
-      movements = rows;
+      movements = result[0] as List<Map<String, Object?>>;
+      currentCartridge = result[1] as Map<String, Object?>?;
       loading = false;
     });
   }
@@ -526,7 +537,7 @@ class _CartridgeDetailsPageState extends State<CartridgeDetailsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final item = widget.cartridge;
+    final item = currentCartridge ?? widget.cartridge;
     return Scaffold(
       appBar: AppBar(title: const Text('Карточка картриджа')),
       body: ListView(
