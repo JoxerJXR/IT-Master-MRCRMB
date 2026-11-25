@@ -1,7 +1,12 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:excel/excel.dart' as xls;
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -304,6 +309,7 @@ class ReportsPage extends StatefulWidget {
 class _ReportsPageState extends State<ReportsPage> {
   Map<String, int> stats = {};
   bool loading = true;
+  bool exporting = false;
 
   Future<int> _count(Database db, String table, {String? where}) async {
     try {
@@ -317,40 +323,131 @@ class _ReportsPageState extends State<ReportsPage> {
     final values = <String, int>{
       'Картриджи': await _count(db, 'cartridges'),
       'Картриджи на заправке': await _count(db, 'cartridges', where: "status='На заправке'"),
+      'Картриджи готовы к выдаче': await _count(db, 'cartridges', where: "status='Готов к выдаче'"),
+      'Картриджи выданы': await _count(db, 'cartridges', where: "status='Выдан'"),
       'Оборудование': await _count(db, 'it_equipment'),
       'Неисправное оборудование': await _count(db, 'it_equipment', where: "status='Неисправно'"),
       'Заявки': await _count(db, 'service_requests'),
       'Новые заявки': await _count(db, 'service_requests', where: "status='Новая'"),
+      'Заявки в работе': await _count(db, 'service_requests', where: "status='В работе'"),
       'Сотрудники': await _count(db, 'revision_employees', where: 'active=1'),
+      'Имущество на руках': await _count(db, 'revision_assets', where: "status='На руках'"),
       'Имущество на складе': await _count(db, 'revision_assets', where: "status='На складе'"),
       'Расходные материалы': await _count(db, 'it_consumables'),
+      'Расходники с низким остатком': await _count(db, 'it_consumables', where: 'quantity <= minimum'),
     };
     if (mounted) setState(() { stats = values; loading = false; });
   }
 
-  Future<void> _export() async {
-    final dir = await getTemporaryDirectory();
-    final file = File(p.join(dir.path, 'it_master_report_${DateTime.now().millisecondsSinceEpoch}.csv'));
-    final lines = ['Раздел;Количество', ...stats.entries.map((e) => '${e.key};${e.value}')];
-    await file.writeAsString('\uFEFF${lines.join('\n')}');
-    await SharePlus.instance.share(ShareParams(files: [XFile(file.path)], text: 'Отчёт IT-Мастер'));
+  Future<void> _beginExport() async {
+    if (exporting) return;
+    setState(() => exporting = true);
+  }
+
+  Future<void> _exportExcel() async {
+    await _beginExport();
+    try {
+      final book = xls.Excel.createExcel();
+      final sheet = book['Сводный отчёт'];
+      sheet.appendRow([xls.TextCellValue('Раздел'), xls.TextCellValue('Количество')]);
+      for (final entry in stats.entries) {
+        sheet.appendRow([xls.TextCellValue(entry.key), xls.IntCellValue(entry.value)]);
+      }
+      final bytes = book.save();
+      if (bytes == null || bytes.isEmpty) throw Exception('Не удалось сформировать XLSX.');
+      final file = XFile.fromData(Uint8List.fromList(bytes),
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        name: 'IT-Master-report.xlsx');
+      await SharePlus.instance.share(ShareParams(files: [file], text: 'Отчёт IT-Мастер в формате Excel'));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка экспорта Excel: $e')));
+    } finally { if (mounted) setState(() => exporting = false); }
+  }
+
+  Future<void> _exportPdf() async {
+    await _beginExport();
+    try {
+      final fontData = await rootBundle.load('assets/fonts/DejaVuSans.ttf');
+      final font = pw.Font.ttf(fontData);
+      final document = pw.Document();
+      final now = DateFormat('dd.MM.yyyy HH:mm').format(DateTime.now());
+      document.addPage(pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        theme: pw.ThemeData.withFont(base: font, bold: font),
+        build: (_) => [
+          pw.Text('IT-Мастер — сводный отчёт', style: pw.TextStyle(font: font, fontSize: 18)),
+          pw.SizedBox(height: 6),
+          pw.Text('Сформирован: $now', style: pw.TextStyle(font: font, fontSize: 9)),
+          pw.SizedBox(height: 18),
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
+            columnWidths: {0: const pw.FlexColumnWidth(3), 1: const pw.FlexColumnWidth(1)},
+            children: [
+              pw.TableRow(
+                decoration: const pw.BoxDecoration(color: PdfColors.grey300),
+                children: [
+                  pw.Padding(padding: const pw.EdgeInsets.all(7), child: pw.Text('Раздел', style: pw.TextStyle(font: font, fontWeight: pw.FontWeight.bold))),
+                  pw.Padding(padding: const pw.EdgeInsets.all(7), child: pw.Text('Количество', style: pw.TextStyle(font: font, fontWeight: pw.FontWeight.bold))),
+                ],
+              ),
+              ...stats.entries.map((entry) => pw.TableRow(children: [
+                pw.Padding(padding: const pw.EdgeInsets.all(7), child: pw.Text(entry.key, style: pw.TextStyle(font: font, fontSize: 10))),
+                pw.Padding(padding: const pw.EdgeInsets.all(7), child: pw.Text(entry.value.toString(), style: pw.TextStyle(font: font, fontSize: 10))),
+              ])),
+            ],
+          ),
+          pw.SizedBox(height: 18),
+          pw.Text('Отчёт сформирован приложением IT-Мастер. Данные взяты из локальной базы устройства.',
+            style: pw.TextStyle(font: font, fontSize: 8, color: PdfColors.grey700)),
+        ],
+      ));
+      final bytes = await document.save();
+      final file = XFile.fromData(bytes, mimeType: 'application/pdf', name: 'IT-Master-report.pdf');
+      await SharePlus.instance.share(ShareParams(files: [file], text: 'Отчёт IT-Мастер в формате PDF'));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка экспорта PDF: $e')));
+    } finally { if (mounted) setState(() => exporting = false); }
+  }
+
+  Future<void> _exportCsv() async {
+    try {
+      final dir = await getTemporaryDirectory();
+      final file = File(p.join(dir.path, 'it_master_report_${DateTime.now().millisecondsSinceEpoch}.csv'));
+      final lines = ['Раздел;Количество', ...stats.entries.map((e) => '${e.key};${e.value}')];
+      await file.writeAsString('\uFEFF${lines.join('\n')}');
+      await SharePlus.instance.share(ShareParams(files: [XFile(file.path)], text: 'Отчёт IT-Мастер CSV'));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка экспорта CSV: $e')));
+    }
   }
 
   @override
   void initState() { super.initState(); _load(); }
-  @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Отчёты и статистика')),
-    body: loading ? const Center(child: CircularProgressIndicator()) : RefreshIndicator(onRefresh: _load,
-      child: ListView(padding: const EdgeInsets.all(16), children: [
-        const Text('Текущие показатели локальной базы данных.'),
-        const SizedBox(height: 10),
-        ...stats.entries.map((e) => Card(elevation: 0, child: ListTile(leading: const Icon(Icons.analytics_outlined),
-          title: Text(e.key), trailing: Text(e.value.toString(), style: Theme.of(context).textTheme.titleLarge)))),
-        const SizedBox(height: 12),
-        FilledButton.icon(onPressed: _export, icon: const Icon(Icons.file_download_outlined), label: const Text('Экспортировать CSV')),
-      ])));
-}
 
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Отчёты и статистика')),
+    body: loading ? const Center(child: CircularProgressIndicator()) : RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(padding: const EdgeInsets.all(16), children: [
+        const Text('Текущие показатели локальной базы данных. Экспортируйте сводку для передачи или печати.'),
+        const SizedBox(height: 10),
+        ...stats.entries.map((e) => Card(elevation: 0, child: ListTile(
+          leading: const Icon(Icons.analytics_outlined), title: Text(e.key),
+          trailing: Text(e.value.toString(), style: Theme.of(context).textTheme.titleLarge)))),
+        const SizedBox(height: 12),
+        FilledButton.icon(onPressed: exporting ? null : _exportExcel,
+          icon: const Icon(Icons.table_view), label: Text(exporting ? 'Формирование…' : 'Экспортировать Excel (.xlsx)')),
+        const SizedBox(height: 8),
+        FilledButton.icon(onPressed: exporting ? null : _exportPdf,
+          icon: const Icon(Icons.picture_as_pdf_outlined), label: const Text('Экспортировать PDF')),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(onPressed: exporting ? null : _exportCsv,
+          icon: const Icon(Icons.file_download_outlined), label: const Text('Экспортировать CSV')),
+      ]),
+    ),
+  );
+}
 class BackupPage extends StatefulWidget {
   const BackupPage({super.key});
   @override
