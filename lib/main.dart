@@ -46,7 +46,7 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int selectedIndex = 0;
 
-  final List<Widget> pages = const [
+  List<Widget> get pages => [
     DashboardPage(onNavigate: (index) => setState(() => selectedIndex = index)),
     const CartridgesPage(),
     PlaceholderPage(
