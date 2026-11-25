@@ -6,6 +6,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: it-master-build
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
