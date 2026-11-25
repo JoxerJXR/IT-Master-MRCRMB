@@ -122,14 +122,18 @@ class CartridgeDatabase {
     });
   }
 
-  Future<void> addBatchMovement({required List<int> ids, required String type, required String destination}) async {
+  Future<void> addBatchMovement({
+    required List<int> ids, required String type, required String destination,
+    String personName = '', String signature = '', String department = '', DateTime? movementDate,
+  }) async {
     final db = await database;
     await db.transaction((txn) async {
-      final now = DateTime.now().toIso8601String();
+      final now = (movementDate ?? DateTime.now()).toIso8601String();
       for (final id in ids) {
         await txn.insert('movements', {
           'cartridge_id': id, 'type': type, 'date': now,
-          'destination': destination, 'note': '',
+          'person_name': personName, 'department': department,
+          'destination': destination, 'note': '', 'signature': signature,
         });
         await txn.update('cartridges', {
           'status': type == 'Отправка на заправку' ? 'На заправке' : 'Готов к выдаче',
