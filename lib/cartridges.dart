@@ -205,28 +205,71 @@ class _CartridgesPageState extends State<CartridgesPage> {
 
   Future<void> _batch(String type) async {
     final destination = TextEditingController();
-    if (type == 'Отправка на заправку') {
-      final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
-        title: const Text('Отправка на заправку'),
-        content: TextField(controller: destination, decoration: const InputDecoration(labelText: 'Куда отправлены картриджи')),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Отмена')), FilledButton(onPressed: () => Navigator.pop(ctx, destination.text.trim().isNotEmpty), child: const Text('Отправить'))],
-      ));
-      if (ok != true) return;
-    } else {
-      final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
-        title: const Text('Получение из заправки'),
-        content: Text('Подтвердить фактическое получение ${selectedIds.length} картриджей?'),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Отмена')), FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Подтвердить'))],
-      ));
-      if (ok != true) return;
+    final recipient = TextEditingController();
+    final signatureController = SignatureController(penStrokeWidth: 2, penColor: Colors.black, exportBackgroundColor: Colors.white);
+    final receiptDate = DateTime.now();
+    String signatureData = '';
+    bool confirmed = false;
+    try {
+      if (type == 'Отправка на заправку') {
+        confirmed = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+          title: const Text('Отправка на заправку'),
+          content: TextField(controller: destination, decoration: const InputDecoration(labelText: 'Куда отправлены картриджи')),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Отмена')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, destination.text.trim().isNotEmpty), child: const Text('Отправить')),
+          ],
+        )) ?? false;
+      } else {
+        confirmed = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+          title: const Text('Получение из заправки'),
+          content: SizedBox(width: 420, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text('Получено картриджей: ${selectedIds.length}'),
+            const SizedBox(height: 8),
+            Text('Дата получения: ${DateFormat('dd.MM.yyyy HH:mm').format(receiptDate)}'),
+            const SizedBox(height: 12),
+            TextField(controller: recipient, decoration: const InputDecoration(labelText: 'ФИО получателя *', border: OutlineInputBorder())),
+            const SizedBox(height: 12),
+            const Text('Подпись получателя *'),
+            const SizedBox(height: 6),
+            Container(height: 150, decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Theme.of(ctx).colorScheme.outline), borderRadius: BorderRadius.circular(8)),
+              child: Signature(controller: signatureController, backgroundColor: Colors.white)),
+            Align(alignment: Alignment.centerRight, child: TextButton.icon(onPressed: signatureController.clear, icon: const Icon(Icons.clear), label: const Text('Очистить подпись'))),
+          ]))),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Отмена')),
+            FilledButton(onPressed: () {
+              if (recipient.text.trim().isNotEmpty && !signatureController.isEmpty) {
+                Navigator.pop(ctx, true);
+              } else {
+                ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Укажите ФИО и поставьте подпись.')));
+              }
+            }, child: const Text('Подтвердить получение')),
+          ],
+        )) ?? false;
+        if (confirmed) {
+          final bytes = await signatureController.toPngBytes();
+          if (bytes == null || bytes.isEmpty) {
+            confirmed = false;
+          } else {
+            signatureData = base64Encode(bytes);
+          }
+        }
+      }
+      if (!confirmed) return;
+      await CartridgeDatabase.instance.addBatchMovement(
+        ids: selectedIds.toList(), type: type, destination: destination.text.trim(),
+        personName: recipient.text.trim(), signature: signatureData, movementDate: receiptDate,
+      );
+      if (!mounted) return;
+      setState(() => selectedIds.clear());
+      await _load();
+    } finally {
+      destination.dispose();
+      recipient.dispose();
+      signatureController.dispose();
     }
-    await CartridgeDatabase.instance.addBatchMovement(ids: selectedIds.toList(), type: type, destination: destination.text.trim());
-    destination.dispose();
-    if (!mounted) return;
-    setState(() => selectedIds.clear());
-    await _load();
   }
-
   Future<void> _openNew() async {
     final saved = await Navigator.push<bool>(
       context,
