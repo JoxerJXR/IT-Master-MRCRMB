@@ -346,7 +346,10 @@ class _CartridgesPageState extends State<CartridgesPage> {
                         if (selectedIds.every((id) => cartridges.any((c) => c['id'] == id && c['status'] == 'Принят')))
                           FilledButton.icon(onPressed: () => _batch('Отправка на заправку'), icon: const Icon(Icons.local_shipping), label: const Text('Отправить выбранные на заправку')),
                         if (selectedIds.every((id) => cartridges.any((c) => c['id'] == id && c['status'] == 'На заправке')))
-                          FilledButton.icon(onPressed: () => _batch('Получение из заправки'), icon: const Icon(Icons.inventory), label: const Text('Отметить получение из заправки')),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 6),
+                            child: Text('Получение и выдачу оформляйте в карточке каждого картриджа отдельно — ФИО и подпись будут сохранены именно у него.'),
+                          ),
                         TextButton(onPressed: () => setState(() => selectedIds.clear()), child: const Text('Снять выделение')),
                       ]),
                     ),
