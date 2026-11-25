@@ -344,6 +344,7 @@ class _BackupPageState extends State<BackupPage> {
   Future<void> _backup() async {
     setState(() => busy = true);
     try {
+      await CartridgeDatabase.instance.closeDatabase();
       final dbPath = p.join(await getDatabasesPath(), 'it_master_local.db');
       final source = File(dbPath);
       if (!await source.exists()) throw Exception('База данных ещё не создана.');
