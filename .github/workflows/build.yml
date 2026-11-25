@@ -58,6 +58,13 @@ jobs:
           EOF
           sed -i 's|android:icon="@mipmap/ic_launcher"|android:icon="@drawable/ic_launcher_custom"|' android/app/src/main/AndroidManifest.xml
 
+      - name: Prepare offline Cyrillic PDF font
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-dejavu-core
+          mkdir -p assets/fonts
+          cp /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf assets/fonts/DejaVuSans.ttf
+
       - name: Get dependencies
         run: flutter pub get
 
