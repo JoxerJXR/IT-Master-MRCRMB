@@ -1,6 +1,9 @@
 import 'cartridges.dart';
 import 'revision.dart';
 import 'requests.dart';
+import 'equipment.dart';
+import 'knowledge_base.dart';
+import 'private_notes.dart';
 
 import 'package:flutter/material.dart';
 
@@ -52,11 +55,7 @@ class _MainScreenState extends State<MainScreen> {
     DashboardPage(onNavigate: (index) => setState(() => selectedIndex = index)),
     const CartridgesPage(),
     const RequestsPage(),
-    PlaceholderPage(
-      title: 'Оборудование',
-      subtitle: 'Компьютеры, принтеры и оргтехника',
-      icon: Icons.computer_rounded,
-    ),
+    const EquipmentPage(),
     const MorePage(),
     const RevisionPage(),
   ];
@@ -369,32 +368,45 @@ class PlaceholderPage extends StatelessWidget {
 class MorePage extends StatelessWidget {
   const MorePage({super.key});
 
+  void _open(BuildContext context, Widget page) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.all(16),
-      children: const [
-        MenuTile(
+      children: [
+        Card(elevation: 0, child: ListTile(
+          leading: const Icon(Icons.menu_book_outlined),
+          title: const Text('Инструкции и частые ошибки'),
+          subtitle: const Text('Принтеры, Windows, Office, RJ45 и горячие клавиши'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _open(context, const KnowledgeBasePage()),
+        )),
+        Card(elevation: 0, child: ListTile(
+          leading: const Icon(Icons.lock_outline),
+          title: const Text('Личные заметки'),
+          subtitle: const Text('Wi-Fi, компьютеры и учётные записи — защищённо на телефоне'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _open(context, const PrivateNotesPage()),
+        )),
+        const MenuTile(
           icon: Icons.inventory_2_outlined,
           title: 'Расходные материалы',
           subtitle: 'Тонер, бумага и комплектующие',
         ),
-        MenuTile(
-          icon: Icons.menu_book_outlined,
-          title: 'Справочник',
-          subtitle: 'Ошибки принтеров и инструкции',
-        ),
-        MenuTile(
+        const MenuTile(
           icon: Icons.network_check_rounded,
           title: 'Проверка сети',
           subtitle: 'IP-адреса и доступность устройств',
         ),
-        MenuTile(
+        const MenuTile(
           icon: Icons.bar_chart_rounded,
           title: 'Отчёты',
           subtitle: 'История и статистика',
         ),
-        MenuTile(
+        const MenuTile(
           icon: Icons.backup_outlined,
           title: 'Резервная копия',
           subtitle: 'Сохранение и восстановление данных',
