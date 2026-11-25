@@ -1,5 +1,6 @@
 import 'cartridges.dart';
 import 'revision.dart';
+import 'requests.dart';
 
 import 'package:flutter/material.dart';
 
@@ -50,11 +51,7 @@ class _MainScreenState extends State<MainScreen> {
   List<Widget> get pages => [
     DashboardPage(onNavigate: (index) => setState(() => selectedIndex = index)),
     const CartridgesPage(),
-    PlaceholderPage(
-      title: 'Заявки',
-      subtitle: 'Учёт неисправностей и выполненных работ',
-      icon: Icons.assignment_rounded,
-    ),
+    const RequestsPage(),
     PlaceholderPage(
       title: 'Оборудование',
       subtitle: 'Компьютеры, принтеры и оргтехника',
