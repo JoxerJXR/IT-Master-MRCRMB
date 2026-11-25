@@ -425,10 +425,11 @@ class SettingsPage extends StatelessWidget {
             title: Text('Оформление'),
             subtitle: Text('Автоматически по настройкам телефона'),
           ),
-          const ListTile(
-            leading: Icon(Icons.backup_outlined),
-            title: Text('Резервное копирование'),
-            subtitle: Text('Локальное сохранение данных'),
+          ListTile(
+            leading: const Icon(Icons.backup_outlined),
+            title: const Text('Резервное копирование'),
+            subtitle: const Text('Создание и восстановление копии базы'),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupPage())),
           ),
           ListTile(
             leading: const Icon(Icons.info_outline),
@@ -440,7 +441,7 @@ class SettingsPage extends StatelessWidget {
             child: Padding(
               padding: EdgeInsets.all(16),
               child: Text(
-                'IT-Мастер · ГБУЗ «МРЦРМБ» ЛНР\\nДанные приложения хранятся локально на устройстве. '
+                'IT-Мастер · ГБУЗ «МРЦРМБ» ЛНР\nДанные приложения хранятся локально на устройстве. '
                 'Перед переносом на другой телефон создавайте резервную копию.',
               ),
             ),
