@@ -661,6 +661,34 @@ class _SettingsPageState extends State<SettingsPage> {
             icon: const Icon(Icons.save_outlined),
             label: const Text('Сохранить название'),
           ),
+          const SizedBox(height: 12),
+          if (!_pinReady)
+            const ListTile(
+              leading: Icon(Icons.lock_outline),
+              title: Text('Проверка защиты PIN-кодом…'),
+            )
+          else
+            SwitchListTile(
+              secondary: const Icon(Icons.lock_outline),
+              title: const Text('Запрашивать PIN при запуске'),
+              subtitle: Text(_pinEnabled
+                  ? 'Защита включена'
+                  : 'Защита выключена'),
+              value: _pinEnabled,
+              onChanged: (enabled) {
+                if (enabled) {
+                  _enablePin();
+                } else {
+                  _disablePin();
+                }
+              },
+            ),
+          if (_pinEnabled)
+            ListTile(
+              leading: const Icon(Icons.password),
+              title: const Text('Изменить PIN-код'),
+              onTap: _changePin,
+            ),
           const SizedBox(height: 16),
           const ListTile(
             leading: Icon(Icons.palette_outlined),
