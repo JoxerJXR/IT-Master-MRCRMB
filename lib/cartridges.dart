@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:signature/signature.dart';
 import 'package:sqflite/sqflite.dart';
@@ -897,27 +896,9 @@ class _FullSignaturePage extends StatefulWidget {
 
 class _FullSignaturePageState extends State<_FullSignaturePage> {
   @override
-  void initState() {
-    super.initState();
-    SystemChrome.setPreferredOrientations(const [
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
-  }
-
-  @override
-  void dispose() {
-    SystemChrome.setPreferredOrientations(const [
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-    ]);
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: const Text('Подпись — горизонтальный режим'),
+      title: const Text('Подпись — увеличенное поле'),
       actions: [
         IconButton(
           tooltip: 'Очистить',
@@ -932,17 +913,25 @@ class _FullSignaturePageState extends State<_FullSignaturePage> {
     ),
     body: SafeArea(
       child: Padding(
-        padding: const EdgeInsets.all(8),
-        child: SizedBox.expand(
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border.all(color: Colors.grey),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Signature(
-              controller: widget.controller,
-              backgroundColor: Colors.white,
+        padding: const EdgeInsets.all(12),
+        child: Center(
+          // Сохраняем пропорции обычного поля подписи: при возврате
+          // на предыдущий экран штрихи не выходят за границы холста.
+          child: AspectRatio(
+            aspectRatio: 2.8,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border.all(color: Colors.grey),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Signature(
+                  controller: widget.controller,
+                  backgroundColor: Colors.white,
+                ),
+              ),
             ),
           ),
         ),
