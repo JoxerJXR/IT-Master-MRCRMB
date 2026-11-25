@@ -329,7 +329,7 @@ class DashboardPage extends StatelessWidget {
         Row(children: [
           Expanded(child: DashboardCard(title: 'Оборудование', subtitle: 'Учёт техники', icon: Icons.devices_rounded, color: const Color(0xFF805CB4), onTap: () => onNavigate(3))),
           const SizedBox(width: 12),
-          Expanded(child: DashboardCard(title: 'Расходники', subtitle: 'Запасы и детали', icon: Icons.inventory_2_rounded, color: const Color(0xFFC18435), onTap: () => onNavigate(4))),
+          Expanded(child: DashboardCard(title: 'Расходники', subtitle: 'Запасы и детали', icon: Icons.inventory_2_rounded, color: const Color(0xFFC18435), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ConsumablesPage())))),
         ]),
         const SizedBox(height: 12),
         DashboardCard(title: 'Ревизия', subtitle: 'Имущество сотрудников', icon: Icons.assignment_ind_rounded, color: const Color(0xFF287A62), onTap: () => onNavigate(5)),
