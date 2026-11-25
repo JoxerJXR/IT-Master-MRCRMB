@@ -78,9 +78,29 @@ class _ConsumablesPageState extends State<ConsumablesPage> {
       };
       if (item == null) {
         final id = await d.insert('it_consumables', values);
-        await d.insert('it_consumable_movements', {'consumable_id': id, 'action': 'Начальный остаток', 'amount': int.parse(quantity.text), 'date': DateTime.now().toIso8601String(), 'note': 'Создание позиции'});
+        await d.insert('it_consumable_movements', {
+          'consumable_id': id,
+          'action': 'Начальный остаток',
+          'amount': int.parse(quantity.text),
+          'date': DateTime.now().toIso8601String(),
+          'note': 'Создание позиции',
+        });
       } else {
-        await d.update('it_consumables', values, where: 'id=?', whereArgs: [item['id']]);
+        final oldQuantity = item['quantity'] as int;
+        final newQuantity = int.parse(quantity.text);
+        final difference = newQuantity - oldQuantity;
+        await d.transaction((t) async {
+          await t.update('it_consumables', values, where: 'id=?', whereArgs: [item['id']]);
+          if (difference != 0) {
+            await t.insert('it_consumable_movements', {
+              'consumable_id': item['id'],
+              'action': 'Корректировка остатка',
+              'amount': difference,
+              'date': DateTime.now().toIso8601String(),
+              'note': 'Ручное изменение остатка: было $oldQuantity, стало $newQuantity',
+            });
+          }
+        });
       }
       await _load();
     }
