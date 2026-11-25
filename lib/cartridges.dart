@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:signature/signature.dart';
 import 'package:sqflite/sqflite.dart';
@@ -264,14 +265,22 @@ class _CartridgesPageState extends State<CartridgesPage> {
                     ],
                   ),
                   const SizedBox(height: 18),
-                  SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(value: 'Все', label: Text('Все')),
-                      ButtonSegment(value: 'Принят', label: Text('Приняты')),
-                      ButtonSegment(value: 'На заправке', label: Text('Заправка')),
-                    ],
-                    selected: {filter},
-                    onSelectionChanged: (value) => setState(() => filter = value.first),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment(value: 'Все', label: Text('Все')),
+                        ButtonSegment(value: 'Принят', label: Text('Приняты')),
+                        ButtonSegment(value: 'На заправке', label: Text('Заправка')),
+                        ButtonSegment(value: 'Готов к выдаче', label: Text('К выдаче')),
+                        ButtonSegment(value: 'Выдан', label: Text('Выданные')),
+                      ],
+                      selected: {filter},
+                      onSelectionChanged: (value) => setState(() {
+                        filter = value.first;
+                        selectedIds.clear();
+                      }),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   if (selectedIds.isNotEmpty) Card(
@@ -693,6 +702,14 @@ class _MovementCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final type = movement['type'] as String;
     final signature = movement['signature'] as String? ?? '';
+    Uint8List? signatureBytes;
+    if (signature.isNotEmpty) {
+      try {
+        signatureBytes = base64Decode(signature);
+      } catch (_) {
+        signatureBytes = null;
+      }
+    }
     return Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 9),
@@ -714,14 +731,47 @@ class _MovementCard extends StatelessWidget {
             if (signature.isNotEmpty) ...[
               const SizedBox(height: 8),
               const Text('Подпись:', style: TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 6),
+              if (signatureBytes == null)
+                const Text('Не удалось прочитать изображение подписи.')
+              else
+                GestureDetector(
+                  onTap: () => showDialog<void>(
+                    context: context,
+                    builder: (dialogContext) => Dialog(
+                      insetPadding: const EdgeInsets.all(12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: InteractiveViewer(
+                          minScale: 0.5,
+                          maxScale: 5,
+                          child: Image.memory(
+                            signatureBytes!,
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, __, ___) => const Text('Не удалось отобразить подпись.'),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  child: Container(
+                    width: double.infinity,
+                    height: 150,
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Image.memory(
+                      signatureBytes,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const Center(child: Text('Не удалось отобразить подпись.')),
+                    ),
+                  ),
+                ),
               const SizedBox(height: 4),
-              Container(
-                height: 90,
-                width: 220,
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(border: Border.all(color: Theme.of(context).colorScheme.outlineVariant), borderRadius: BorderRadius.circular(8)),
-                child: Image.memory(base64Decode(signature), fit: BoxFit.contain),
-              ),
+              const Text('Нажмите на подпись, чтобы увеличить её.', style: TextStyle(fontSize: 11)),
             ],
           ],
         ),
@@ -778,23 +828,67 @@ class _DateField extends StatelessWidget {
   );
 }
 
-class _FullSignaturePage extends StatelessWidget {
+class _FullSignaturePage extends StatefulWidget {
   final SignatureController controller;
   const _FullSignaturePage({required this.controller});
+
+  @override
+  State<_FullSignaturePage> createState() => _FullSignaturePageState();
+}
+
+class _FullSignaturePageState extends State<_FullSignaturePage> {
+  @override
+  void initState() {
+    super.initState();
+    SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+  }
+
+  @override
+  void dispose() {
+    SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Подпись на весь экран'), actions: [
-      IconButton(tooltip: 'Очистить', onPressed: () => controller.clear(), icon: const Icon(Icons.refresh)),
-      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Готово')),
-    ]),
-    body: SafeArea(child: Padding(
-      padding: const EdgeInsets.all(8),
-      child: Container(
-        width: double.infinity, height: double.infinity,
-        decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey), borderRadius: BorderRadius.circular(12)),
-        child: Signature(controller: controller, backgroundColor: Colors.white),
+    appBar: AppBar(
+      title: const Text('Подпись — горизонтальный режим'),
+      actions: [
+        IconButton(
+          tooltip: 'Очистить',
+          onPressed: () => widget.controller.clear(),
+          icon: const Icon(Icons.refresh),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Готово'),
+        ),
+      ],
+    ),
+    body: SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: SizedBox.expand(
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border.all(color: Colors.grey),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Signature(
+              controller: widget.controller,
+              backgroundColor: Colors.white,
+            ),
+          ),
+        ),
       ),
-    )),
+    ),
   );
 }
 
