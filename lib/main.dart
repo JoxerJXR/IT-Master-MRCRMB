@@ -8,6 +8,7 @@ import 'app_info.dart';
 import 'tools_pages.dart';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -51,10 +52,92 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
+  static const _organizationKey = 'organization_name';
+  static const _defaultOrganization = 'ГБУЗ «МРЦРМБ» ЛНР';
+
   int selectedIndex = 0;
+  String organizationName = '';
+  bool _loadingOrganization = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOrganization();
+  }
+
+  Future<void> _loadOrganization() async {
+    final preferences = await SharedPreferences.getInstance();
+    final savedName = preferences.getString(_organizationKey)?.trim() ?? '';
+    if (!mounted) return;
+    setState(() {
+      organizationName = savedName;
+      _loadingOrganization = false;
+    });
+    if (savedName.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showOrganizationSetup();
+      });
+    }
+  }
+
+  Future<void> _saveOrganization(String value) async {
+    final normalized = value.trim();
+    if (normalized.isEmpty) return;
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(_organizationKey, normalized);
+    if (mounted) setState(() => organizationName = normalized);
+  }
+
+  Future<void> _showOrganizationSetup() async {
+    final controller = TextEditingController(text: organizationName);
+    final result = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Настройка приложения'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Укажите название вашей организации. Оно будет отображаться на главном экране.'),
+            const SizedBox(height: 14),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                labelText: 'Название организации',
+                hintText: 'Например, ГБУЗ «МРЦРМБ» ЛНР',
+                border: OutlineInputBorder(),
+              ),
+              onSubmitted: (value) {
+                if (value.trim().isNotEmpty) Navigator.pop(dialogContext, value.trim());
+              },
+            ),
+          ],
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () {
+              if (controller.text.trim().isNotEmpty) {
+                Navigator.pop(dialogContext, controller.text.trim());
+              }
+            },
+            child: const Text('Сохранить'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (result != null) {
+      await _saveOrganization(result);
+    } else if (mounted && organizationName.isEmpty) {
+      await _showOrganizationSetup();
+    }
+  }
 
   List<Widget> get pages => [
-    DashboardPage(onNavigate: (index) => setState(() => selectedIndex = index)),
+    DashboardPage(onNavigate: (index) => setState(() => selectedIndex = index), organizationName: organizationName.isEmpty ? _defaultOrganization : organizationName),
     const CartridgesPage(),
     const RequestsPage(),
     const EquipmentPage(),
@@ -87,7 +170,10 @@ class _MainScreenState extends State<MainScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => const SettingsPage(),
+                  builder: (_) => SettingsPage(
+                    organizationName: organizationName.isEmpty ? _defaultOrganization : organizationName,
+                    onOrganizationChanged: _saveOrganization,
+                  ),
                 ),
               );
             },
@@ -96,10 +182,12 @@ class _MainScreenState extends State<MainScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: IndexedStack(
-        index: selectedIndex,
-        children: pages,
-      ),
+      body: _loadingOrganization
+          ? const Center(child: CircularProgressIndicator())
+          : IndexedStack(
+              index: selectedIndex,
+              children: pages,
+            ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: selectedIndex,
         onDestinationSelected: (index) {
@@ -144,7 +232,12 @@ class _MainScreenState extends State<MainScreen> {
 
 class DashboardPage extends StatelessWidget {
   final ValueChanged<int> onNavigate;
-  const DashboardPage({super.key, required this.onNavigate});
+  final String organizationName;
+  const DashboardPage({
+    super.key,
+    required this.onNavigate,
+    this.organizationName = 'ГБУЗ «МРЦРМБ» ЛНР',
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -164,7 +257,7 @@ class DashboardPage extends StatelessWidget {
             ),
             borderRadius: BorderRadius.circular(22),
           ),
-          child: const Column(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(
@@ -191,7 +284,7 @@ class DashboardPage extends StatelessWidget {
               ),
               SizedBox(height: 14),
               Text(
-                'ГБУЗ «МРЦРМБ» ЛНР',
+                organizationName,
                 style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w500,
@@ -410,8 +503,48 @@ class MorePage extends StatelessWidget {
   }
 }
 
-class SettingsPage extends StatelessWidget {
-  const SettingsPage({super.key});
+class SettingsPage extends StatefulWidget {
+  final String organizationName;
+  final ValueChanged<String> onOrganizationChanged;
+
+  const SettingsPage({
+    super.key,
+    required this.organizationName,
+    required this.onOrganizationChanged,
+  });
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  late final TextEditingController _organizationController;
+
+  @override
+  void initState() {
+    super.initState();
+    _organizationController = TextEditingController(text: widget.organizationName);
+  }
+
+  @override
+  void dispose() {
+    _organizationController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveOrganization() async {
+    final value = _organizationController.text.trim();
+    if (value.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Введите название организации')),
+      );
+      return;
+    }
+    widget.onOrganizationChanged(value);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Название организации сохранено')),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -420,6 +553,29 @@ class SettingsPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          const Text(
+            'Организация',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _organizationController,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              labelText: 'Название организации',
+              hintText: 'Введите название организации',
+              prefixIcon: Icon(Icons.business_outlined),
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (_) => _saveOrganization(),
+          ),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: _saveOrganization,
+            icon: const Icon(Icons.save_outlined),
+            label: const Text('Сохранить название'),
+          ),
+          const SizedBox(height: 16),
           const ListTile(
             leading: Icon(Icons.palette_outlined),
             title: Text('Оформление'),
