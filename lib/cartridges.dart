@@ -710,6 +710,7 @@ class _MovementCard extends StatelessWidget {
         signatureBytes = null;
       }
     }
+    final imageBytes = signatureBytes;
     return Card(
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 9),
@@ -732,7 +733,7 @@ class _MovementCard extends StatelessWidget {
               const SizedBox(height: 8),
               const Text('Подпись:', style: TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 6),
-              if (signatureBytes == null)
+              if (imageBytes == null)
                 const Text('Не удалось прочитать изображение подписи.')
               else
                 GestureDetector(
@@ -746,7 +747,7 @@ class _MovementCard extends StatelessWidget {
                           minScale: 0.5,
                           maxScale: 5,
                           child: Image.memory(
-                            signatureBytes!,
+                            imageBytes,
                             fit: BoxFit.contain,
                             errorBuilder: (_, __, ___) => const Text('Не удалось отобразить подпись.'),
                           ),
@@ -764,7 +765,7 @@ class _MovementCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Image.memory(
-                      signatureBytes,
+                      imageBytes,
                       fit: BoxFit.contain,
                       errorBuilder: (_, __, ___) => const Center(child: Text('Не удалось отобразить подпись.')),
                     ),
