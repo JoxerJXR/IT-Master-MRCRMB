@@ -6,6 +6,7 @@ import 'knowledge_base.dart';
 import 'private_notes.dart';
 import 'app_info.dart';
 import 'tools_pages.dart';
+import 'global_search.dart';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -164,6 +165,11 @@ class _MainScreenState extends State<MainScreen> {
         ),
         centerTitle: false,
         actions: [
+          IconButton(
+            tooltip: 'Поиск по приложению',
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GlobalSearchPage())),
+            icon: const Icon(Icons.search),
+          ),
           IconButton(
             tooltip: 'Настройки',
             onPressed: () {
