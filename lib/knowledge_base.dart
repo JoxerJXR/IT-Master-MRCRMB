@@ -24,7 +24,7 @@ class _KnowledgeBasePageState extends State<KnowledgeBasePage>{
     return Scaffold(body:ListView(padding:const EdgeInsets.all(16),children:[
       TextField(decoration:const InputDecoration(prefixIcon:Icon(Icons.search),hintText:'Поиск по моделям, кодам и темам',border:OutlineInputBorder()),onChanged:(v)=>setState(()=>query=v)),
       const SizedBox(height:12),
-      const Card(child:Padding(padding:EdgeInsets.all(12),child:Text('Справочник можно расширять. Для точной расшифровки всегда сверяйте полный код и текст сообщения с руководством именно вашей модификации устройства.')))),
+      const Card(child:Padding(padding:EdgeInsets.all(12),child:Text('Справочник можно расширять. Для точной расшифровки всегда сверяйте полный код и текст сообщения с руководством именно вашей модификации устройства.'))),
       ...list.map((e)=>Card(elevation:0,child:ExpansionTile(
         title:Text(e['title']!,style:const TextStyle(fontWeight:FontWeight.w600)),
         subtitle:Text(e['group']!),
