@@ -1,4 +1,5 @@
 import 'cartridges.dart';
+import 'revision.dart';
 
 import 'package:flutter/material.dart';
 
@@ -59,7 +60,8 @@ class _MainScreenState extends State<MainScreen> {
       subtitle: 'Компьютеры, принтеры и оргтехника',
       icon: Icons.computer_rounded,
     ),
-    MorePage(),
+    const MorePage(),
+    const RevisionPage(),
   ];
 
   final List<String> titles = [
@@ -68,6 +70,7 @@ class _MainScreenState extends State<MainScreen> {
     'Заявки',
     'Оборудование',
     'Ещё',
+    'Ревизия',
   ];
 
   @override
@@ -129,6 +132,11 @@ class _MainScreenState extends State<MainScreen> {
             icon: Icon(Icons.grid_view_rounded),
             selectedIcon: Icon(Icons.grid_view_rounded),
             label: 'Ещё',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.assignment_ind_outlined),
+            selectedIcon: Icon(Icons.assignment_ind),
+            label: 'Ревизия',
           ),
         ],
       ),
@@ -214,6 +222,8 @@ class DashboardPage extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(child: DashboardCard(title: 'Расходники', subtitle: 'Запасы и детали', icon: Icons.inventory_2_rounded, color: const Color(0xFFC18435), onTap: () => onNavigate(4))),
         ]),
+        const SizedBox(height: 12),
+        DashboardCard(title: 'Ревизия', subtitle: 'Имущество сотрудников', icon: Icons.assignment_ind_rounded, color: const Color(0xFF287A62), onTap: () => onNavigate(5)),
         const SizedBox(height: 24),
         Card(
           child: Padding(
