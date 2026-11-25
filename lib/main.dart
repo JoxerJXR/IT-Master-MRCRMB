@@ -321,6 +321,8 @@ class DashboardPage extends StatelessWidget {
         ]),
         const SizedBox(height: 12),
         DashboardCard(title: 'Ревизия', subtitle: 'Имущество сотрудников', icon: Icons.assignment_ind_rounded, color: const Color(0xFF287A62), onTap: () => onNavigate(5)),
+        const SizedBox(height: 18),
+        const _DashboardSummary(),
         const SizedBox(height: 24),
         Card(
           child: Padding(
@@ -609,6 +611,168 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _DashboardSummary extends StatefulWidget {
+  const _DashboardSummary();
+
+  @override
+  State<_DashboardSummary> createState() => _DashboardSummaryState();
+}
+
+class _DashboardSummaryState extends State<_DashboardSummary> {
+  late Future<Map<String, int>> _summary;
+
+  @override
+  void initState() {
+    super.initState();
+    _summary = _loadSummary();
+  }
+
+  Future<Map<String, int>> _loadSummary() async {
+    final db = await CartridgeDatabase.instance.database;
+    // Create tables if necessary so the first app launch is safe.
+    await db.execute("""CREATE TABLE IF NOT EXISTS service_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT '', department TEXT NOT NULL DEFAULT '',
+      requester TEXT NOT NULL DEFAULT '', room TEXT NOT NULL DEFAULT '',
+      category TEXT NOT NULL DEFAULT 'Другое', equipment TEXT NOT NULL DEFAULT '',
+      inventory_number TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '',
+      priority TEXT NOT NULL DEFAULT 'Обычный', executor TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'Новая', resolution TEXT NOT NULL DEFAULT '')""");
+    await db.execute("""CREATE TABLE IF NOT EXISTS it_equipment (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'Другое', model TEXT NOT NULL DEFAULT '',
+      inventory_number TEXT NOT NULL DEFAULT '', serial_number TEXT NOT NULL DEFAULT '',
+      location TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'Исправно',
+      fault_reason TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT '')""");
+    await db.execute("""CREATE TABLE IF NOT EXISTS revision_employees (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, full_name TEXT NOT NULL,
+      department TEXT NOT NULL DEFAULT '', position TEXT NOT NULL DEFAULT '',
+      active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT '')""");
+    await db.execute("""CREATE TABLE IF NOT EXISTS revision_assets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'Другое', model TEXT NOT NULL DEFAULT '',
+      inventory_number TEXT NOT NULL DEFAULT '', serial_number TEXT NOT NULL DEFAULT '',
+      note TEXT NOT NULL DEFAULT '', employee_id INTEGER,
+      status TEXT NOT NULL DEFAULT 'На руках', created_at TEXT NOT NULL DEFAULT '')""");
+    await db.execute("""CREATE TABLE IF NOT EXISTS it_consumables (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'Другое', quantity INTEGER NOT NULL DEFAULT 0,
+      unit TEXT NOT NULL DEFAULT 'шт.', minimum INTEGER NOT NULL DEFAULT 0,
+      location TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL DEFAULT '')""");
+
+    Future<int> count(String sql, [List<Object?> args = const []]) async {
+      final rows = await db.rawQuery(sql, args);
+      return (rows.first['n'] as num?)?.toInt() ?? 0;
+    }
+
+    final values = await Future.wait<int>([
+      count("SELECT COUNT(*) AS n FROM service_requests WHERE status IN ('Новая','В работе','Ожидает')"),
+      count("SELECT COUNT(*) AS n FROM it_equipment WHERE status='Неисправно'"),
+      count("SELECT COUNT(*) AS n FROM cartridges WHERE status='Готов к выдаче'"),
+      count("SELECT COUNT(*) AS n FROM revision_assets WHERE status='На руках'"),
+      count("SELECT COUNT(*) AS n FROM it_consumables WHERE quantity <= minimum"),
+    ]);
+    return {
+      'requests': values[0],
+      'faulty': values[1],
+      'cartridges': values[2],
+      'assets': values[3],
+      'lowStock': values[4],
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Сводка по работе', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 10),
+        FutureBuilder<Map<String, int>>(
+          future: _summary,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Padding(
+                padding: EdgeInsets.all(18),
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
+            if (snapshot.hasError) {
+              return Card(
+                child: ListTile(
+                  leading: const Icon(Icons.info_outline),
+                  title: const Text('Сводка пока недоступна'),
+                  subtitle: const Text('Попробуйте обновить данные.'),
+                  trailing: IconButton(
+                    tooltip: 'Повторить',
+                    onPressed: () => setState(() => _summary = _loadSummary()),
+                    icon: const Icon(Icons.refresh),
+                  ),
+                ),
+              );
+            }
+            final data = snapshot.data!;
+            return Column(
+              children: [
+                Row(children: [
+                  Expanded(child: _SummaryTile(label: 'Активные заявки', value: data['requests']!, icon: Icons.assignment_outlined)),
+                  const SizedBox(width: 8),
+                  Expanded(child: _SummaryTile(label: 'Неисправная техника', value: data['faulty']!, icon: Icons.warning_amber_rounded)),
+                ]),
+                Row(children: [
+                  Expanded(child: _SummaryTile(label: 'Готовые картриджи', value: data['cartridges']!, icon: Icons.print_outlined)),
+                  const SizedBox(width: 8),
+                  Expanded(child: _SummaryTile(label: 'Имущество на руках', value: data['assets']!, icon: Icons.devices_other)),
+                ]),
+                Row(children: [
+                  Expanded(child: _SummaryTile(label: 'Низкий остаток', value: data['lowStock']!, icon: Icons.inventory_2_outlined)),
+                  const SizedBox(width: 8),
+                  const Expanded(child: SizedBox.shrink()),
+                ]),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _SummaryTile extends StatelessWidget {
+  final String label;
+  final int value;
+  final IconData icon;
+
+  const _SummaryTile({required this.label, required this.value, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 13),
+        child: Row(
+          children: [
+            Icon(icon, color: Theme.of(context).colorScheme.primary, size: 25),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('$value', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                  Text(label, style: Theme.of(context).textTheme.bodySmall, maxLines: 2, overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
