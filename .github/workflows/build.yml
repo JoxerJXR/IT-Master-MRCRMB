@@ -37,6 +37,27 @@ jobs:
       - name: Create Android project
         run: flutter create . --platforms=android --org ru.mrcmrb
 
+      - name: Create custom app icon
+        run: |
+          mkdir -p android/app/src/main/res/drawable
+          cat > android/app/src/main/res/drawable/ic_launcher_custom.xml <<'EOF'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp"
+              android:height="108dp"
+              android:viewportWidth="108"
+              android:viewportHeight="108">
+              <path android:fillColor="#071426" android:pathData="M0,0h108v108h-108z"/>
+              <path android:fillColor="#123B68" android:pathData="M54,7a47,47 0,1 0,0 94a47,47 0,1 0,0 -94"/>
+              <path android:fillColor="#20B8FF" android:pathData="M54,12a42,42 0,1 0,0 84a42,42 0,1 0,0 -84M54,22a32,32 0,1 1,0 64a32,32 0,1 1,0 -64"/>
+              <path android:fillColor="#EAF5FF" android:pathData="M28,32h52a5,5 0,0 1,5 5v34a5,5 0,0 1,-5 5h-52a5,5 0,0 1,-5 -5v-34a5,5 0,0 1,5 -5z"/>
+              <path android:fillColor="#0B2A4D" android:pathData="M33,38h42v27h-42z"/>
+              <path android:fillColor="#20B8FF" android:pathData="M49,75h10v5h-10zM42,80h24v4h-24z"/>
+              <path android:fillColor="#EAF5FF" android:pathData="M39,45l4,-4 8,8 8,-8 4,4 -8,8 8,8 -4,4 -8,-8 -8,8 -4,-4 8,-8z"/>
+              <path android:fillColor="#FF5364" android:pathData="M66,44l4,4 -15,15 -4,-4z"/>
+          </vector>
+          EOF
+          sed -i 's|android:icon="@mipmap/ic_launcher"|android:icon="@drawable/ic_launcher_custom"|' android/app/src/main/AndroidManifest.xml
+
       - name: Get dependencies
         run: flutter pub get
 
