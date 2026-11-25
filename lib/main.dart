@@ -4,6 +4,7 @@ import 'requests.dart';
 import 'equipment.dart';
 import 'knowledge_base.dart';
 import 'private_notes.dart';
+import 'app_info.dart';
 
 import 'package:flutter/material.dart';
 
@@ -459,25 +460,34 @@ class SettingsPage extends StatelessWidget {
       appBar: AppBar(title: const Text('Настройки')),
       body: ListView(
         padding: const EdgeInsets.all(16),
-        children: const [
-          ListTile(
+        children: [
+          const ListTile(
             leading: Icon(Icons.palette_outlined),
             title: Text('Оформление'),
             subtitle: Text('Автоматически по настройкам телефона'),
           ),
-          ListTile(
+          const ListTile(
             leading: Icon(Icons.backup_outlined),
             title: Text('Резервное копирование'),
             subtitle: Text('Локальное сохранение данных'),
           ),
           ListTile(
-            leading: Icon(Icons.info_outline),
-            title: Text('О программе'),
-            subtitle: Text('IT-Мастер · Версия 1.0.0'),
+            leading: const Icon(Icons.info_outline),
+            title: const Text('О программе'),
+            subtitle: Text('IT-Мастер · Версия $appVersion'),
+          ),
+          const SizedBox(height: 12),
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'IT-Мастер · ГБУЗ «МРЦРМБ» ЛНР\\nДанные приложения хранятся локально на устройстве. '
+                'Перед переносом на другой телефон создавайте резервную копию.',
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 }
-
