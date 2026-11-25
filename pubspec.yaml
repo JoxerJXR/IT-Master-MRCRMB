@@ -22,6 +22,8 @@ dependencies:
   shared_preferences: ^2.5.3
   qr_flutter: ^4.1.0
   mobile_scanner: ^7.1.2
+  excel: ^4.0.6
+  pdf: ^3.11.3
 
 dev_dependencies:
   flutter_test:
@@ -30,4 +32,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/fonts/DejaVuSans.ttf
 
