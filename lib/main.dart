@@ -47,7 +47,7 @@ class _MainScreenState extends State<MainScreen> {
   int selectedIndex = 0;
 
   final List<Widget> pages = const [
-    DashboardPage(),
+    DashboardPage(onNavigate: (index) => setState(() => selectedIndex = index)),
     const CartridgesPage(),
     PlaceholderPage(
       title: 'Заявки',
@@ -137,7 +137,8 @@ class _MainScreenState extends State<MainScreen> {
 }
 
 class DashboardPage extends StatelessWidget {
-  const DashboardPage({super.key});
+  final ValueChanged<int> onNavigate;
+  const DashboardPage({super.key, required this.onNavigate});
 
   @override
   Widget build(BuildContext context) {
@@ -202,49 +203,17 @@ class DashboardPage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
-        const Row(
-          children: [
-            Expanded(
-              child: DashboardCard(
-                title: 'Картриджи',
-                subtitle: 'Приём и возврат',
-                icon: Icons.print_rounded,
-                color: Color(0xFF247CB5),
-              ),
-            ),
-            SizedBox(width: 12),
-            Expanded(
-              child: DashboardCard(
-                title: 'Заявки',
-                subtitle: 'Неисправности',
-                icon: Icons.assignment_rounded,
-                color: Color(0xFF168B73),
-              ),
-            ),
-          ],
-        ),
+        Row(children: [
+          Expanded(child: DashboardCard(title: 'Картриджи', subtitle: 'Приём и возврат', icon: Icons.print_rounded, color: const Color(0xFF247CB5), onTap: () => onNavigate(1))),
+          const SizedBox(width: 12),
+          Expanded(child: DashboardCard(title: 'Заявки', subtitle: 'Неисправности', icon: Icons.assignment_rounded, color: const Color(0xFF168B73), onTap: () => onNavigate(2))),
+        ]),
         const SizedBox(height: 12),
-        const Row(
-          children: [
-            Expanded(
-              child: DashboardCard(
-                title: 'Оборудование',
-                subtitle: 'Учёт техники',
-                icon: Icons.devices_rounded,
-                color: Color(0xFF805CB4),
-              ),
-            ),
-            SizedBox(width: 12),
-            Expanded(
-              child: DashboardCard(
-                title: 'Расходники',
-                subtitle: 'Запасы и детали',
-                icon: Icons.inventory_2_rounded,
-                color: Color(0xFFC18435),
-              ),
-            ),
-          ],
-        ),
+        Row(children: [
+          Expanded(child: DashboardCard(title: 'Оборудование', subtitle: 'Учёт техники', icon: Icons.devices_rounded, color: const Color(0xFF805CB4), onTap: () => onNavigate(3))),
+          const SizedBox(width: 12),
+          Expanded(child: DashboardCard(title: 'Расходники', subtitle: 'Запасы и детали', icon: Icons.inventory_2_rounded, color: const Color(0xFFC18435), onTap: () => onNavigate(4))),
+        ]),
         const SizedBox(height: 24),
         Card(
           child: Padding(
@@ -289,6 +258,7 @@ class DashboardCard extends StatelessWidget {
   final String subtitle;
   final IconData icon;
   final Color color;
+  final VoidCallback onTap;
 
   const DashboardCard({
     super.key,
@@ -296,13 +266,17 @@ class DashboardCard extends StatelessWidget {
     required this.subtitle,
     required this.icon,
     required this.color,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return Card(
       elevation: 0,
-      child: Padding(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
         padding: const EdgeInsets.all(15),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
