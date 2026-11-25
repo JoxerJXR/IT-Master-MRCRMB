@@ -23,7 +23,7 @@ class _EquipmentPageState extends State<EquipmentPage> {
       fault_reason TEXT NOT NULL DEFAULT '',note TEXT NOT NULL DEFAULT '',
       updated_at TEXT NOT NULL)""");
     final rows=await d.query('it_equipment',orderBy:'title COLLATE NOCASE');
-    if(mounted)setState(()=>{items=rows,loading=false});
+    if(mounted)setState(() { items=rows; loading=false; });
   }
   Future<void> _edit([Map<String,Object?>? item]) async {
     final ok=await Navigator.push<bool>(context,MaterialPageRoute(builder:(_)=>EquipmentEditPage(item:item)));
