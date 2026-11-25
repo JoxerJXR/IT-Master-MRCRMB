@@ -515,7 +515,7 @@ class MorePage extends StatelessWidget {
         _tile(context, icon: Icons.network_check_rounded, title: 'Проверка сети',
           subtitle: 'DNS, TCP-порты и локальные IP-адреса', page: const NetworkToolsPage()),
         _tile(context, icon: Icons.bar_chart_rounded, title: 'Отчёты',
-          subtitle: 'Статистика и экспорт в CSV', page: const ReportsPage()),
+          subtitle: 'Статистика и экспорт в Excel, PDF и CSV', page: const ReportsPage()),
         _tile(context, icon: Icons.backup_outlined, title: 'Резервная копия',
           subtitle: 'Создание и восстановление базы данных', page: const BackupPage()),
       ],
