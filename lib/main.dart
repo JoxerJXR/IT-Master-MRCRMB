@@ -5,6 +5,7 @@ import 'equipment.dart';
 import 'knowledge_base.dart';
 import 'private_notes.dart';
 import 'app_info.dart';
+import 'tools_pages.dart';
 
 import 'package:flutter/material.dart';
 
@@ -373,80 +374,38 @@ class MorePage extends StatelessWidget {
     Navigator.push(context, MaterialPageRoute(builder: (_) => page));
   }
 
+  Widget _tile(BuildContext context, {required IconData icon, required String title, required String subtitle, required Widget page}) {
+    return Card(
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 10),
+      child: ListTile(
+        leading: Icon(icon, color: Theme.of(context).colorScheme.primary, size: 28),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Text(subtitle),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: () => _open(context, page),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Card(elevation: 0, child: ListTile(
-          leading: const Icon(Icons.menu_book_outlined),
-          title: const Text('Инструкции и частые ошибки'),
-          subtitle: const Text('Принтеры, Windows, Office, RJ45 и горячие клавиши'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => _open(context, const KnowledgeBasePage()),
-        )),
-        Card(elevation: 0, child: ListTile(
-          leading: const Icon(Icons.lock_outline),
-          title: const Text('Личные заметки'),
-          subtitle: const Text('Wi-Fi, компьютеры и учётные записи — защищённо на телефоне'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => _open(context, const PrivateNotesPage()),
-        )),
-        const MenuTile(
-          icon: Icons.inventory_2_outlined,
-          title: 'Расходные материалы',
-          subtitle: 'Тонер, бумага и комплектующие',
-        ),
-        const MenuTile(
-          icon: Icons.network_check_rounded,
-          title: 'Проверка сети',
-          subtitle: 'IP-адреса и доступность устройств',
-        ),
-        const MenuTile(
-          icon: Icons.bar_chart_rounded,
-          title: 'Отчёты',
-          subtitle: 'История и статистика',
-        ),
-        const MenuTile(
-          icon: Icons.backup_outlined,
-          title: 'Резервная копия',
-          subtitle: 'Сохранение и восстановление данных',
-        ),
+        _tile(context, icon: Icons.menu_book_outlined, title: 'Инструкции и частые ошибки',
+          subtitle: 'Canon, Pantum, Windows, Office, RJ45 и диагностика', page: const KnowledgeBasePage()),
+        _tile(context, icon: Icons.lock_outline, title: 'Личные заметки',
+          subtitle: 'Защищённые заметки на этом телефоне', page: const PrivateNotesPage()),
+        _tile(context, icon: Icons.inventory_2_outlined, title: 'Расходные материалы',
+          subtitle: 'Остатки, поступление, выдача и история', page: const ConsumablesPage()),
+        _tile(context, icon: Icons.network_check_rounded, title: 'Проверка сети',
+          subtitle: 'DNS, TCP-порты и локальные IP-адреса', page: const NetworkToolsPage()),
+        _tile(context, icon: Icons.bar_chart_rounded, title: 'Отчёты',
+          subtitle: 'Статистика и экспорт в CSV', page: const ReportsPage()),
+        _tile(context, icon: Icons.backup_outlined, title: 'Резервная копия',
+          subtitle: 'Создание и восстановление базы данных', page: const BackupPage()),
       ],
-    );
-  }
-}
-
-class MenuTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-
-  const MenuTile({
-    super.key,
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      margin: const EdgeInsets.only(bottom: 10),
-      child: ListTile(
-        leading: Icon(
-          icon,
-          color: Theme.of(context).colorScheme.primary,
-          size: 28,
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-        subtitle: Text(subtitle),
-        trailing: const Icon(Icons.chevron_right_rounded),
-      ),
     );
   }
 }
