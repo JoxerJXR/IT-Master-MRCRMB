@@ -1,3 +1,4 @@
+import 'cartridges.dart';
 
 import 'package:flutter/material.dart';
 
@@ -47,11 +48,7 @@ class _MainScreenState extends State<MainScreen> {
 
   final List<Widget> pages = const [
     DashboardPage(),
-    PlaceholderPage(
-      title: 'Картриджи',
-      subtitle: 'Приём, заправка и возврат картриджей',
-      icon: Icons.print_rounded,
-    ),
+    const CartridgesPage(),
     PlaceholderPage(
       title: 'Заявки',
       subtitle: 'Учёт неисправностей и выполненных работ',
