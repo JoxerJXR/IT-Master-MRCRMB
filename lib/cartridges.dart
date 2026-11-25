@@ -17,7 +17,13 @@ class CartridgeDatabase {
     final dbPath = p.join(await getDatabasesPath(), 'it_master_local.db');
     _database = await openDatabase(
       dbPath,
-      version: 1,
+      version: 2,
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute("UPDATE cartridges SET status = 'Принят' WHERE status = 'В наличии'");
+          await db.execute("UPDATE movements SET type = 'Получение из заправки' WHERE type = 'Возврат'");
+        }
+      },
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE cartridges (
@@ -74,10 +80,11 @@ class CartridgeDatabase {
     required String senderName,
     required String note,
     required String signature,
+    DateTime? receivedAt,
   }) async {
     final db = await database;
     await db.transaction((txn) async {
-      final now = DateTime.now().toIso8601String();
+      final now = (receivedAt ?? DateTime.now()).toIso8601String();
       final id = await txn.insert('cartridges', {
         'code': code,
         'model': model,
@@ -86,7 +93,7 @@ class CartridgeDatabase {
         'sender_name': senderName,
         'received_at': now,
         'note': note,
-        'status': 'В наличии',
+        'status': 'Принят',
       });
       await txn.insert('movements', {
         'cartridge_id': id,
@@ -100,6 +107,22 @@ class CartridgeDatabase {
     });
   }
 
+  Future<void> addBatchMovement({required List<int> ids, required String type, required String destination}) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      final now = DateTime.now().toIso8601String();
+      for (final id in ids) {
+        await txn.insert('movements', {
+          'cartridge_id': id, 'type': type, 'date': now,
+          'destination': destination, 'note': '',
+        });
+        await txn.update('cartridges', {
+          'status': type == 'Отправка на заправку' ? 'На заправке' : 'Готов к выдаче',
+        }, where: 'id = ?', whereArgs: [id]);
+      }
+    });
+  }
+
   Future<void> addMovement({
     required int cartridgeId,
     required String type,
@@ -108,10 +131,11 @@ class CartridgeDatabase {
     required String destination,
     required String note,
     required String signature,
+    DateTime? movementDate,
   }) async {
     final db = await database;
     await db.transaction((txn) async {
-      final now = DateTime.now().toIso8601String();
+      final now = (movementDate ?? DateTime.now()).toIso8601String();
       await txn.insert('movements', {
         'cartridge_id': cartridgeId,
         'type': type,
@@ -124,7 +148,7 @@ class CartridgeDatabase {
       });
       await txn.update(
         'cartridges',
-        {'status': type == 'Отправка на заправку' ? 'На заправке' : 'В наличии'},
+        {'status': type == 'Отправка на заправку' ? 'На заправке' : type == 'Получение из заправки' ? 'Готов к выдаче' : 'Выдан'},
         where: 'id = ?',
         whereArgs: [cartridgeId],
       );
@@ -143,6 +167,7 @@ class _CartridgesPageState extends State<CartridgesPage> {
   List<Map<String, Object?>> cartridges = [];
   bool loading = true;
   String filter = 'Все';
+  final Set<int> selectedIds = {};
 
   @override
   void initState() {
@@ -157,6 +182,30 @@ class _CartridgesPageState extends State<CartridgesPage> {
       cartridges = rows;
       loading = false;
     });
+  }
+
+  Future<void> _batch(String type) async {
+    final destination = TextEditingController();
+    if (type == 'Отправка на заправку') {
+      final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+        title: const Text('Отправка на заправку'),
+        content: TextField(controller: destination, decoration: const InputDecoration(labelText: 'Куда отправлены картриджи')),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Отмена')), FilledButton(onPressed: () => Navigator.pop(ctx, destination.text.trim().isNotEmpty), child: const Text('Отправить'))],
+      ));
+      if (ok != true) return;
+    } else {
+      final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+        title: const Text('Получение из заправки'),
+        content: Text('Подтвердить фактическое получение ${selectedIds.length} картриджей?'),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Отмена')), FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Подтвердить'))],
+      ));
+      if (ok != true) return;
+    }
+    await CartridgeDatabase.instance.addBatchMovement(ids: selectedIds.toList(), type: type, destination: destination.text.trim());
+    destination.dispose();
+    if (!mounted) return;
+    setState(() => selectedIds.clear());
+    await _load();
   }
 
   Future<void> _openNew() async {
@@ -196,8 +245,8 @@ class _CartridgesPageState extends State<CartridgesPage> {
                       )),
                       const SizedBox(width: 10),
                       Expanded(child: _SummaryCard(
-                        title: 'В наличии',
-                        value: cartridges.where((e) => e['status'] == 'В наличии').length.toString(),
+                        title: 'К выдаче',
+                        value: cartridges.where((e) => e['status'] == 'Готов к выдаче').length.toString(),
                         icon: Icons.check_circle_outline,
                       )),
                       const SizedBox(width: 10),
@@ -212,13 +261,26 @@ class _CartridgesPageState extends State<CartridgesPage> {
                   SegmentedButton<String>(
                     segments: const [
                       ButtonSegment(value: 'Все', label: Text('Все')),
-                      ButtonSegment(value: 'В наличии', label: Text('В наличии')),
-                      ButtonSegment(value: 'На заправке', label: Text('Заправка')),
+                      ButtonSegment(value: 'Принят', label: Text('Приняты')),
+                      ButtonSegment(value: 'На заправке', label: Text('На заправке')),
                     ],
                     selected: {filter},
                     onSelectionChanged: (value) => setState(() => filter = value.first),
                   ),
                   const SizedBox(height: 12),
+                  if (selectedIds.isNotEmpty) Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        Text('Выбрано картриджей: ${selectedIds.length}'),
+                        if (selectedIds.every((id) => cartridges.any((c) => c['id'] == id && c['status'] == 'Принят')))
+                          FilledButton.icon(onPressed: () => _batch('Отправка на заправку'), icon: const Icon(Icons.local_shipping), label: const Text('Отправить выбранные на заправку')),
+                        if (selectedIds.every((id) => cartridges.any((c) => c['id'] == id && c['status'] == 'На заправке')))
+                          FilledButton.icon(onPressed: () => _batch('Получение из заправки'), icon: const Icon(Icons.inventory), label: const Text('Отметить получение из заправки')),
+                        TextButton(onPressed: () => setState(() => selectedIds.clear()), child: const Text('Снять выделение')),
+                      ]),
+                    ),
+                  ),
                   if (visible.isEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 70),
@@ -235,6 +297,8 @@ class _CartridgesPageState extends State<CartridgesPage> {
                   else
                     ...visible.map((item) => _CartridgeTile(
                       item: item,
+                      selected: selectedIds.contains(item['id']),
+                      onSelect: (v) => setState(() { v ? selectedIds.add(item['id'] as int) : selectedIds.remove(item['id'] as int); }),
                       onChanged: _load,
                     )),
                 ],
@@ -272,7 +336,9 @@ class _SummaryCard extends StatelessWidget {
 class _CartridgeTile extends StatelessWidget {
   final Map<String, Object?> item;
   final VoidCallback onChanged;
-  const _CartridgeTile({required this.item, required this.onChanged});
+  final bool selected;
+  final ValueChanged<bool> onSelect;
+  const _CartridgeTile({required this.item, required this.onChanged, required this.selected, required this.onSelect});
 
   @override
   Widget build(BuildContext context) {
@@ -282,10 +348,7 @@ class _CartridgeTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-        leading: CircleAvatar(
-          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-          child: const Icon(Icons.print_rounded),
-        ),
+        leading: Checkbox(value: selected, onChanged: (v) => onSelect(v ?? false)),
         title: Text(
           '${item['model']} · ${item['code']}',
           style: const TextStyle(fontWeight: FontWeight.bold),
@@ -340,6 +403,7 @@ class _CartridgeIntakePageState extends State<CartridgeIntakePage> {
   final sender = TextEditingController();
   final note = TextEditingController();
   final signature = SignatureController(penStrokeWidth: 2, penColor: Colors.black, exportBackgroundColor: Colors.white);
+  DateTime receivedAt = DateTime.now();
   bool saving = false;
 
   @override
@@ -372,6 +436,7 @@ class _CartridgeIntakePageState extends State<CartridgeIntakePage> {
         senderName: sender.text.trim(),
         note: note.text.trim(),
         signature: base64Encode(bytes),
+        receivedAt: receivedAt,
       );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -397,6 +462,7 @@ class _CartridgeIntakePageState extends State<CartridgeIntakePage> {
             _field(department, 'Отделение'),
             const _SectionTitle('Кто сдал картридж'),
             _field(sender, 'ФИО сдающего'),
+            _DateField(value: receivedAt, onChanged: (v) => setState(() => receivedAt = v)),
             _field(note, 'Примечание (необязательно)', required: false, maxLines: 2),
             const _SectionTitle('Подпись сдающего'),
             const Text('Попросите сотрудника расписаться в поле ниже.'),
@@ -487,18 +553,14 @@ class _CartridgeDetailsPageState extends State<CartridgeDetailsPage> {
             ),
           ),
           const SizedBox(height: 12),
-          if (status == 'В наличии')
+          if (status == 'Принят' || status == 'Готов к выдаче')
             FilledButton.icon(
-              onPressed: () => _movement('Отправка на заправку'),
+              onPressed: () => _movement(status == 'Принят' ? 'Отправка на заправку' : 'Выдача'),
               icon: const Icon(Icons.local_shipping_outlined),
-              label: const Text('Отправить на заправку'),
+              label: Text(status == 'Принят' ? 'Отправить на заправку' : 'Выдать сотруднику'),
             )
-          else
-            FilledButton.icon(
-              onPressed: () => _movement('Возврат'),
-              icon: const Icon(Icons.assignment_return_outlined),
-              label: const Text('Оформить возврат'),
-            ),
+          else if (status == 'На заправке')
+            const Text('Ожидает получения из заправки'),
           const SizedBox(height: 20),
           const _SectionTitle('История движения'),
           if (loading)
@@ -531,7 +593,8 @@ class _CartridgeMovementPageState extends State<CartridgeMovementPage> {
   final signature = SignatureController(penStrokeWidth: 2, penColor: Colors.black, exportBackgroundColor: Colors.white);
   bool saving = false;
 
-  bool get isReturn => widget.type == 'Возврат';
+  bool get isReturn => widget.type == 'Выдача';
+  DateTime movementDate = DateTime.now();
 
   @override
   void dispose() {
@@ -565,6 +628,7 @@ class _CartridgeMovementPageState extends State<CartridgeMovementPage> {
         destination: destination.text.trim(),
         note: note.text.trim(),
         signature: signatureData,
+        movementDate: movementDate,
       );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -585,11 +649,12 @@ class _CartridgeMovementPageState extends State<CartridgeMovementPage> {
           children: [
             Text(widget.type, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 14),
+             _DateField(value: movementDate, onChanged: (v) => setState(() => movementDate = v)),
             if (isReturn) ...[
               _field(person, 'ФИО получателя'),
               _field(department, 'Отделение получателя'),
               const _SectionTitle('Подпись получателя'),
-              const Text('Возврат нельзя сохранить без подписи получателя.'),
+              const Text('Выдача сохраняется только с подписью получателя.'),
               const SizedBox(height: 8),
               _SignaturePad(controller: signature),
             ] else ...[
@@ -600,7 +665,7 @@ class _CartridgeMovementPageState extends State<CartridgeMovementPage> {
             FilledButton.icon(
               onPressed: saving ? null : _save,
               icon: saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save),
-              label: Text(saving ? 'Сохранение...' : 'Сохранить'),
+              label: Text(saving ? 'Сохранение...' : isReturn ? 'Оформить выдачу' : 'Сохранить'),
             ),
           ],
         ),
@@ -670,18 +735,56 @@ class _SignaturePad extends StatelessWidget {
       child: Column(
         children: [
           Expanded(child: ClipRRect(borderRadius: BorderRadius.circular(12), child: Signature(controller: controller, backgroundColor: Colors.white))),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: controller.clear,
-              icon: const Icon(Icons.refresh, size: 18),
-              label: const Text('Очистить подпись'),
-            ),
-          ),
+          Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+            TextButton.icon(onPressed: () => controller.clear(), icon: const Icon(Icons.refresh, size: 18), label: const Text('Очистить')),
+            TextButton.icon(onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => _FullSignaturePage(controller: controller))), icon: const Icon(Icons.fullscreen), label: const Text('На весь экран')),
+          ]),
         ],
       ),
     );
   }
+}
+
+
+class _DateField extends StatelessWidget {
+  final DateTime value;
+  final ValueChanged<DateTime> onChanged;
+  const _DateField({required this.value, required this.onChanged});
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: OutlinedButton.icon(
+      icon: const Icon(Icons.calendar_month),
+      label: Text('Дата: ${DateFormat('dd.MM.yyyy HH:mm').format(value)}'),
+      onPressed: () async {
+        final day = await showDatePicker(context: context, initialDate: value, firstDate: DateTime(2020), lastDate: DateTime(2100));
+        if (day == null || !context.mounted) return;
+        final time = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(value));
+        if (time == null) return;
+        onChanged(DateTime(day.year, day.month, day.day, time.hour, time.minute));
+      },
+    ),
+  );
+}
+
+class _FullSignaturePage extends StatelessWidget {
+  final SignatureController controller;
+  const _FullSignaturePage({required this.controller});
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Подпись на весь экран'), actions: [
+      IconButton(tooltip: 'Очистить', onPressed: () => controller.clear(), icon: const Icon(Icons.refresh)),
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Готово')),
+    ]),
+    body: SafeArea(child: Padding(
+      padding: const EdgeInsets.all(8),
+      child: Container(
+        width: double.infinity, height: double.infinity,
+        decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey), borderRadius: BorderRadius.circular(12)),
+        child: Signature(controller: controller, backgroundColor: Colors.white),
+      ),
+    )),
+  );
 }
 
 class _SectionTitle extends StatelessWidget {
