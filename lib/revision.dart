@@ -75,8 +75,8 @@ class _RevisionPageState extends State<RevisionPage> {
     final ok = await showDialog<bool>(context: context, builder: (c) => StatefulBuilder(builder: (c, setD) => AlertDialog(
       title: const Text('Увольнение сотрудника'),
       content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('\${employee['full_name']}'),
-        Text('Закреплено имущества: \${assets.length} поз.'),
+        Text('${employee['full_name']}'),
+        Text('Закреплено имущества: ${assets.length} поз.'),
         if (assets.isNotEmpty) ...[
           const SizedBox(height: 10), const Text('Передать всё имущество:'),
           if (targets.isNotEmpty) DropdownButton<int>(isExpanded: true, value: target,
@@ -97,7 +97,7 @@ class _RevisionPageState extends State<RevisionPage> {
       final now = DateTime.now().toIso8601String();
       for (final a in assets) {
         await t.insert('revision_movements', {'asset_id': a['id'], 'action': warehouse ? 'Возврат на склад при увольнении' : 'Передача при увольнении',
-          'from_employee_id': id, 'to_employee_id': warehouse ? null : target, 'date': now, 'note': 'Увольнение: \${employee['full_name']}'});
+          'from_employee_id': id, 'to_employee_id': warehouse ? null : target, 'date': now, 'note': 'Увольнение: ${employee['full_name']}'});
         await t.update('revision_assets', {'employee_id': warehouse ? null : target, 'status': warehouse ? 'На складе' : 'На руках'}, where: 'id=?', whereArgs: [a['id']]);
       }
       await t.update('revision_employees', {'active': 0}, where: 'id=?', whereArgs: [id]);
@@ -121,7 +121,7 @@ class _RevisionPageState extends State<RevisionPage> {
             return FutureBuilder<int>(future: _count(e['id'] as int), builder: (c, snap) => Card(child: ListTile(
               leading: const CircleAvatar(child: Icon(Icons.person)),
               title: Text(e['full_name'] as String, style: const TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Text('\${e['department']} \${e['position']} • Имущества: \${snap.data ?? 0}'),
+              subtitle: Text('${e['department']} ${e['position']} • Имущества: ${snap.data ?? 0}'),
               trailing: PopupMenuButton<String>(onSelected: (v) { if (v == 'archive') _archive(e); },
                 itemBuilder: (_) => const [PopupMenuItem(value: 'archive', child: Text('Уволить / архивировать'))]),
               onTap: () async { await Navigator.push(context, MaterialPageRoute(builder: (_) => RevisionEmployeePage(employee: e))); await _load(); },
@@ -207,7 +207,7 @@ class _RevisionEmployeePageState extends State<RevisionEmployeePage> {
     final ok = await showDialog<bool>(context: context, builder: (c) => StatefulBuilder(builder: (c, setD) => AlertDialog(
       title: Text(toWarehouse ? 'Вернуть на склад' : 'Передать имущество'),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('\${asset['category']}: \${asset['title']}'),
+        Text('${asset['category']}: ${asset['title']}'),
         if (!toWarehouse) DropdownButton<int>(isExpanded: true, value: target,
           items: targets.map((e) => DropdownMenuItem(value: e['id'] as int, child: Text(e['full_name'] as String, overflow: TextOverflow.ellipsis))).toList(),
           onChanged: (v) => setD(() => target = v)),
@@ -239,9 +239,9 @@ class _RevisionEmployeePageState extends State<RevisionEmployeePage> {
     showModalBottomSheet<void>(context: context, isScrollControlled: true, builder: (c) => SafeArea(child: SizedBox(
       height: MediaQuery.of(c).size.height * .65,
       child: ListView(padding: const EdgeInsets.all(16), children: [
-        Text('История: \${asset['title']}', style: Theme.of(c).textTheme.titleLarge),
+        Text('История: ${asset['title']}', style: Theme.of(c).textTheme.titleLarge),
         ...rows.map((r) => ListTile(leading: const Icon(Icons.swap_horiz), title: Text(r['action'] as String),
-          subtitle: Text('\${_date(r['date'] as String)}\nОт: \${r['from_name'] ?? 'Склад'} → Кому: \${r['to_name'] ?? 'Склад'}\${(r['note'] as String).isNotEmpty ? '\n\${r['note']}' : ''}'), isThreeLine: true)),
+          subtitle: Text('${_date(r['date'] as String)}\nОт: ${r['from_name'] ?? 'Склад'} → Кому: ${r['to_name'] ?? 'Склад'}${(r['note'] as String).isNotEmpty ? '\n${r['note']}' : ''}'), isThreeLine: true)),
       ]),
     )));
   }
@@ -253,13 +253,13 @@ class _RevisionEmployeePageState extends State<RevisionEmployeePage> {
       floatingActionButton: FloatingActionButton.extended(onPressed: _addAsset, icon: const Icon(Icons.add_box), label: const Text('Добавить имущество')),
       body: loading ? const Center(child: CircularProgressIndicator()) : Column(children: [
         Card(margin: const EdgeInsets.all(12), child: ListTile(leading: const Icon(Icons.badge_outlined), title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-          subtitle: Text('\${widget.employee['department']} • Закреплено позиций: \${assets.length}'))),
+          subtitle: Text('${widget.employee['department']} • Закреплено позиций: ${assets.length}'))),
         Expanded(child: assets.isEmpty ? const Center(child: Text('За сотрудником пока ничего не числится.')) :
           ListView.builder(padding: const EdgeInsets.fromLTRB(12, 0, 12, 90), itemCount: assets.length, itemBuilder: (c, i) {
             final a = assets[i];
-            final info = [a['model'], (a['inventory_number'] as String).isNotEmpty ? 'Инв. № \${a['inventory_number']}' : '', (a['serial_number'] as String).isNotEmpty ? 'S/N \${a['serial_number']}' : ''].where((v) => v != null && v.toString().isNotEmpty).join(' • ');
-            return Card(child: ListTile(leading: const Icon(Icons.devices_other), title: Text('\${a['category']}: \${a['title']}'),
-              subtitle: Text('$info\${(a['note'] as String).isNotEmpty ? '\n\${a['note']}' : ''}'),
+            final info = [a['model'], (a['inventory_number'] as String).isNotEmpty ? 'Инв. № ${a['inventory_number']}' : '', (a['serial_number'] as String).isNotEmpty ? 'S/N ${a['serial_number']}' : ''].where((v) => v != null && v.toString().isNotEmpty).join(' • ');
+            return Card(child: ListTile(leading: const Icon(Icons.devices_other), title: Text('${a['category']}: ${a['title']}'),
+              subtitle: Text('$info${(a['note'] as String).isNotEmpty ? '\n${a['note']}' : ''}'),
               trailing: PopupMenuButton<String>(onSelected: (v) { if (v == 'move') _move(a, toWarehouse: false); if (v == 'stock') _move(a, toWarehouse: true); if (v == 'history') _history(a); },
                 itemBuilder: (_) => const [PopupMenuItem(value: 'move', child: Text('Передать сотруднику')), PopupMenuItem(value: 'stock', child: Text('Вернуть на склад')), PopupMenuItem(value: 'history', child: Text('История движения'))])));
           })),
