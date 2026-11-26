@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:signature/signature.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 
@@ -318,6 +320,18 @@ class _CartridgesPageState extends State<CartridgesPage> {
                       )),
                     ],
                   ),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.qr_code_scanner),
+                      title: const Text('Сканировать QR картриджа'),
+                      subtitle: const Text('Открыть карточку по наклейке'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () async {
+                        await Navigator.push(context, MaterialPageRoute(builder: (_) => const CartridgeScannerPage()));
+                        await _load();
+                      },
+                    ),
+                  ),
                   const SizedBox(height: 18),
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
@@ -378,6 +392,101 @@ class _CartridgesPageState extends State<CartridgesPage> {
             ),
     );
   }
+}
+
+class CartridgeQrPage extends StatelessWidget {
+  final Map<String, Object?> cartridge;
+  const CartridgeQrPage({super.key, required this.cartridge});
+
+  @override
+  Widget build(BuildContext context) {
+    final id = cartridge['id'] as int;
+    final code = (cartridge['code'] ?? '').toString();
+    final model = (cartridge['model'] ?? '').toString();
+    final qrValue = 'ITMASTER-CARTRIDGE:$id';
+    return Scaffold(
+      appBar: AppBar(title: const Text('QR-код картриджа')),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(model, style: Theme.of(context).textTheme.titleLarge, textAlign: TextAlign.center),
+                  const SizedBox(height: 6),
+                  Text('Номер: $code', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 16),
+                  QrImageView(data: qrValue, version: QrVersions.auto, size: 240),
+                  const SizedBox(height: 8),
+                  Text('ID картриджа: $id'),
+                  const SizedBox(height: 8),
+                  const Text('Этот код закреплён за конкретным картриджем.'),
+                  const SizedBox(height: 12),
+                  SelectableText(qrValue, textAlign: TextAlign.center),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class CartridgeScannerPage extends StatefulWidget {
+  const CartridgeScannerPage({super.key});
+
+  @override
+  State<CartridgeScannerPage> createState() => _CartridgeScannerPageState();
+}
+
+class _CartridgeScannerPageState extends State<CartridgeScannerPage> {
+  bool _opening = false;
+
+  Future<void> _onDetect(BarcodeCapture capture) async {
+    if (_opening) return;
+    final raw = capture.barcodes.firstOrNull?.rawValue;
+    if (raw == null || !raw.startsWith('ITMASTER-CARTRIDGE:')) return;
+    final id = int.tryParse(raw.substring('ITMASTER-CARTRIDGE:'.length));
+    if (id == null) return;
+    _opening = true;
+    final cartridge = await CartridgeDatabase.instance.getCartridge(id);
+    if (!mounted) return;
+    if (cartridge == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Картридж с таким QR-кодом не найден.')));
+      _opening = false;
+      return;
+    }
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => CartridgeDetailsPage(cartridge: cartridge)));
+    if (mounted) setState(() => _opening = false);
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Сканирование картриджа')),
+    body: Stack(
+      children: [
+        MobileScanner(onDetect: _onDetect),
+        Center(
+          child: Container(
+            width: 260,
+            height: 190,
+            decoration: BoxDecoration(border: Border.all(color: Colors.white, width: 3), borderRadius: BorderRadius.circular(16)),
+          ),
+        ),
+        const Positioned(
+          left: 20, right: 20, bottom: 32,
+          child: Card(child: Padding(
+            padding: EdgeInsets.all(12),
+            child: Text('Наведите камеру на QR-наклейку картриджа.', textAlign: TextAlign.center),
+          )),
+        ),
+      ],
+    ),
+  );
 }
 
 class _SummaryCard extends StatelessWidget {
@@ -625,6 +734,14 @@ class _CartridgeDetailsPageState extends State<CartridgeDetailsPage> {
                   _info('Дата приёма', _date(item['received_at'] as String)),
                   _info('Статус', status),
                   if ((item['note'] as String).isNotEmpty) _info('Примечание', item['note']),
+                  const SizedBox(height: 14),
+                  OutlinedButton.icon(
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => CartridgeQrPage(cartridge: item),
+                    )),
+                    icon: const Icon(Icons.qr_code_2),
+                    label: const Text('Показать QR-код и наклейку'),
+                  ),
                 ],
               ),
             ),
