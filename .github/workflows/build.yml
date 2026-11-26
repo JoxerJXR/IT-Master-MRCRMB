@@ -37,6 +37,75 @@ jobs:
       - name: Create Android project
         run: flutter create . --platforms=android --org ru.mrcmrb
 
+      - name: Configure permanent Android signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then echo "Missing GitHub Actions secret: $name"; exit 1; fi
+          done
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.p12
+          python3 - <<'PY'
+          from pathlib import Path
+          kts = Path("android/app/build.gradle.kts")
+          groovy = Path("android/app/build.gradle")
+          signing = """    signingConfigs {
+                  create("release") {
+                      storeFile = file("upload-keystore.p12")
+                      storeType = "PKCS12"
+                      storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                      keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                      keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+                  }
+              }
+
+          """
+          if kts.exists():
+              p = kts
+              s = p.read_text()
+              marker = "    buildTypes {"
+              if marker not in s:
+                  raise SystemExit("Could not find buildTypes in build.gradle.kts")
+              if 'create("release")' not in s:
+                  s = s.replace(marker, signing + marker, 1)
+              old = 'signingConfig = signingConfigs.getByName("debug")'
+              if old not in s:
+                  raise SystemExit("Could not find default release signing config in build.gradle.kts")
+              s = s.replace(old, 'signingConfig = signingConfigs.getByName("release")', 1)
+              p.write_text(s)
+          elif groovy.exists():
+              p = groovy
+              s = p.read_text()
+              groovy_signing = """    signingConfigs {
+                  release {
+                      storeFile file("upload-keystore.p12")
+                      storeType "PKCS12"
+                      storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                      keyAlias System.getenv("ANDROID_KEY_ALIAS")
+                      keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+                  }
+              }
+
+          """
+              marker = "    buildTypes {"
+              if marker not in s:
+                  raise SystemExit("Could not find buildTypes in build.gradle")
+              if "signingConfigs {" not in s:
+                  s = s.replace(marker, groovy_signing + marker, 1)
+              import re
+              s, count = re.subn(r'(release\s*\{[^{}]*?)signingConfig\s+signingConfigs\.debug', r'\1signingConfig signingConfigs.release', s, count=1, flags=re.S)
+              if count == 0:
+                  raise SystemExit("Could not find default release signing config in build.gradle")
+              p.write_text(s)
+          else:
+              raise SystemExit("No Android app Gradle file found")
+          print("Permanent Android signing configured.")
+          PY
+
       - name: Configure Android biometric authentication
         run: |
           MAIN_ACTIVITY=$(find android/app/src/main -name MainActivity.kt -o -name MainActivity.java | head -n 1)
@@ -84,9 +153,9 @@ jobs:
       - name: Build versioned APK
         run: |
           flutter build apk --release \
-            --build-name=2.0.1 \
+            --build-name=2.0.2 \
             --build-number=${{ github.run_number }} \
-            --dart-define=APP_VERSION=2.0.1+${{ github.run_number }}
+            --dart-define=APP_VERSION=2.0.2+${{ github.run_number }}
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
