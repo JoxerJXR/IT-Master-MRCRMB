@@ -88,6 +88,11 @@ class CartridgeDatabase {
     );
   }
 
+  Future<void> updateCartridgeCode(int id, String code) async {
+    final db = await database;
+    await db.update('cartridges', {'code': code.trim()}, where: 'id = ?', whereArgs: [id]);
+  }
+
   Future<void> addCartridge({
     required String code,
     required String model,
@@ -448,7 +453,7 @@ class _CartridgeScannerPageState extends State<CartridgeScannerPage> {
 
   Future<void> _onDetect(BarcodeCapture capture) async {
     if (_opening) return;
-    final raw = capture.barcodes.firstOrNull?.rawValue;
+    final raw = capture.barcodes.isNotEmpty ? capture.barcodes.first.rawValue : null;
     if (raw == null || !raw.startsWith('ITMASTER-CARTRIDGE:')) return;
     final id = int.tryParse(raw.substring('ITMASTER-CARTRIDGE:'.length));
     if (id == null) return;
@@ -697,6 +702,29 @@ class _CartridgeDetailsPageState extends State<CartridgeDetailsPage> {
     });
   }
 
+  Future<void> _editCode() async {
+    final controller = TextEditingController(text: (currentCartridge?['code'] ?? widget.cartridge['code']).toString());
+    final value = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Номер картриджа'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Номер / код', border: OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text('Сохранить')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value == null || value.isEmpty) return;
+    await CartridgeDatabase.instance.updateCartridgeCode(id, value);
+    await _load();
+  }
+
   Future<void> _movement(String type) async {
     final saved = await Navigator.push<bool>(
       context,
@@ -727,7 +755,16 @@ class _CartridgeDetailsPageState extends State<CartridgeDetailsPage> {
                 children: [
                   Text('${item['model']}', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  _info('Код', item['code']),
+                  Row(
+                    children: [
+                      Expanded(child: _info('Номер', item['code'])),
+                      IconButton(
+                        tooltip: 'Изменить номер',
+                        onPressed: _editCode,
+                        icon: const Icon(Icons.edit_outlined),
+                      ),
+                    ],
+                  ),
                   _info('Принтер', item['printer_model']),
                   _info('Отделение', item['department']),
                   _info('Сдал', item['sender_name']),
