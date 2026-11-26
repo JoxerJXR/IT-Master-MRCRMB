@@ -9,6 +9,32 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 
+Future<Uint8List?> _exportSignaturePng(SignatureController source) async {
+  if (source.isEmpty) return null;
+
+  // Экспортируем копию точек, а не контроллер, привязанный к экранному Canvas.
+  // Это исключает зависимость сохранения от состояния/размера виджета подписи.
+  final exportController = SignatureController(
+    points: List.of(source.points),
+    penStrokeWidth: 2,
+    penColor: Colors.black,
+    exportBackgroundColor: Colors.white,
+  );
+  try {
+    final bytes = await exportController.toPngBytes();
+    if (bytes == null || bytes.length < 8) return null;
+
+    // Проверяем сигнатуру PNG, чтобы не записать в историю повреждённые данные.
+    const pngHeader = <int>[137, 80, 78, 71, 13, 10, 26, 10];
+    for (var i = 0; i < pngHeader.length; i++) {
+      if (bytes[i] != pngHeader[i]) return null;
+    }
+    return bytes;
+  } finally {
+    exportController.dispose();
+  }
+}
+
 class CartridgeCodeAlreadyExists implements Exception {
   const CartridgeCodeAlreadyExists();
 }
@@ -280,7 +306,7 @@ class _CartridgesPageState extends State<CartridgesPage> {
           ],
         )) ?? false;
         if (confirmed) {
-          final bytes = await signatureController.toPngBytes();
+          final bytes = await _exportSignaturePng(signatureController);
           if (bytes == null || bytes.isEmpty) {
             confirmed = false;
           } else {
@@ -638,7 +664,7 @@ class _CartridgeIntakePageState extends State<CartridgeIntakePage> {
     }
     setState(() => saving = true);
     try {
-      final bytes = await signature.toPngBytes();
+      final bytes = await _exportSignaturePng(signature);
       if (bytes == null) throw Exception('Не удалось сохранить подпись');
       await CartridgeDatabase.instance.addCartridge(
         code: code.text.trim(),
