@@ -45,48 +45,74 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
-            if [ -z "${!name:-}" ]; then echo "Missing GitHub Actions secret: $name"; exit 1; fi
-          done
+          test -n "$ANDROID_KEYSTORE_BASE64" || { echo "Missing secret ANDROID_KEYSTORE_BASE64"; exit 1; }
+          test -n "$ANDROID_KEYSTORE_PASSWORD" || { echo "Missing secret ANDROID_KEYSTORE_PASSWORD"; exit 1; }
+          test -n "$ANDROID_KEY_ALIAS" || { echo "Missing secret ANDROID_KEY_ALIAS"; exit 1; }
+          test -n "$ANDROID_KEY_PASSWORD" || { echo "Missing secret ANDROID_KEY_PASSWORD"; exit 1; }
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.p12
           python3 - <<'PY'
+          import os
           from pathlib import Path
-          kts = Path("android/app/build.gradle.kts")
-          groovy = Path("android/app/build.gradle")
-          signing = """    signingConfigs {
+          props = {
+              "storeFile": "app/upload-keystore.p12",
+              "storePassword": os.environ["ANDROID_KEYSTORE_PASSWORD"],
+              "keyAlias": os.environ["ANDROID_KEY_ALIAS"],
+              "keyPassword": os.environ["ANDROID_KEY_PASSWORD"],
+          }
+          Path("android/key.properties").write_text(
+              "".join(f"{k}={v}\\n" for k, v in props.items()),
+              encoding="utf-8",
+          )
+          gradle_kts = Path("android/app/build.gradle.kts")
+          gradle_groovy = Path("android/app/build.gradle")
+          kts_signing = """    val keystoreProperties = java.util.Properties()
+              val keystorePropertiesFile = rootProject.file("key.properties")
+              if (!keystorePropertiesFile.exists()) {
+                  throw GradleException("Android signing properties were not created")
+              }
+              keystoreProperties.load(java.io.FileInputStream(keystorePropertiesFile))
+
+              signingConfigs {
                   create("release") {
-                      storeFile = file("upload-keystore.p12")
+                      storeFile = rootProject.file(keystoreProperties["storeFile"] as String)
                       storeType = "PKCS12"
-                      storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
-                      keyAlias = System.getenv("ANDROID_KEY_ALIAS")
-                      keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+                      storePassword = keystoreProperties["storePassword"] as String
+                      keyAlias = keystoreProperties["keyAlias"] as String
+                      keyPassword = keystoreProperties["keyPassword"] as String
                   }
               }
 
           """
-          if kts.exists():
-              p = kts
+          if gradle_kts.exists():
+              p = gradle_kts
               s = p.read_text()
               marker = "    buildTypes {"
               if marker not in s:
                   raise SystemExit("Could not find buildTypes in build.gradle.kts")
               if 'create("release")' not in s:
-                  s = s.replace(marker, signing + marker, 1)
+                  s = s.replace(marker, kts_signing + marker, 1)
               old = 'signingConfig = signingConfigs.getByName("debug")'
               if old not in s:
                   raise SystemExit("Could not find default release signing config in build.gradle.kts")
               s = s.replace(old, 'signingConfig = signingConfigs.getByName("release")', 1)
               p.write_text(s)
-          elif groovy.exists():
-              p = groovy
+          elif gradle_groovy.exists():
+              p = gradle_groovy
               s = p.read_text()
-              groovy_signing = """    signingConfigs {
+              groovy_signing = """    def keystoreProperties = new java.util.Properties()
+              def keystorePropertiesFile = rootProject.file("key.properties")
+              if (!keystorePropertiesFile.exists()) {
+                  throw new GradleException("Android signing properties were not created")
+              }
+              keystoreProperties.load(new java.io.FileInputStream(keystorePropertiesFile))
+
+              signingConfigs {
                   release {
-                      storeFile file("upload-keystore.p12")
+                      storeFile rootProject.file(keystoreProperties["storeFile"])
                       storeType "PKCS12"
-                      storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
-                      keyAlias System.getenv("ANDROID_KEY_ALIAS")
-                      keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+                      storePassword keystoreProperties["storePassword"]
+                      keyAlias keystoreProperties["keyAlias"]
+                      keyPassword keystoreProperties["keyPassword"]
                   }
               }
 
@@ -97,14 +123,16 @@ jobs:
               if "signingConfigs {" not in s:
                   s = s.replace(marker, groovy_signing + marker, 1)
               import re
-              s, count = re.subn(r'(release\s*\{[^{}]*?)signingConfig\s+signingConfigs\.debug', r'\1signingConfig signingConfigs.release', s, count=1, flags=re.S)
+              s, count = re.subn(r'(release\\s*\\{[^{}]*?)signingConfig\\s+signingConfigs\\.debug', r'\\1signingConfig signingConfigs.release', s, count=1, flags=re.S)
               if count == 0:
                   raise SystemExit("Could not find default release signing config in build.gradle")
               p.write_text(s)
           else:
               raise SystemExit("No Android app Gradle file found")
-          print("Permanent Android signing configured.")
+          print("Permanent Android signing configured from protected workflow secrets.")
           PY
+          keytool -list -keystore android/app/upload-keystore.p12 -storetype PKCS12 -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
+          echo "Signing keystore and alias verified."
 
       - name: Configure Android biometric authentication
         run: |
