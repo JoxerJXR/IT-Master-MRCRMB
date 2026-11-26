@@ -7,6 +7,7 @@ import 'private_notes.dart';
 import 'app_info.dart';
 import 'tools_pages.dart';
 import 'global_search.dart';
+import 'biometric_auth.dart';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -62,6 +63,8 @@ class _MainScreenState extends State<MainScreen> {
   bool _loadingOrganization = true;
   bool _pinLoading = true;
   bool _pinUnlocked = false;
+  bool _biometricEnabled = false;
+  bool _biometricAttempted = false;
   static const _secureStorage = FlutterSecureStorage();
   static const _pinKey = 'it_master_app_pin';
 
@@ -74,6 +77,7 @@ class _MainScreenState extends State<MainScreen> {
   Future<void> _loadOrganization() async {
     final savedPin = await _secureStorage.read(key: _pinKey);
     final preferences = await SharedPreferences.getInstance();
+    final biometricEnabled = preferences.getBool('it_master_biometric_enabled') ?? false;
     final savedName = preferences.getString(_organizationKey)?.trim() ?? '';
     if (!mounted) return;
     setState(() {
@@ -81,7 +85,11 @@ class _MainScreenState extends State<MainScreen> {
       _loadingOrganization = false;
       _pinLoading = false;
       _pinUnlocked = savedPin == null || savedPin.isEmpty;
+      _biometricEnabled = biometricEnabled;
     });
+    if (savedPin != null && savedPin.isNotEmpty && biometricEnabled) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _tryBiometricUnlock());
+    }
     if (savedName.isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _showOrganizationSetup();
@@ -90,6 +98,14 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<bool> _checkPin(String value) async { final saved = await _secureStorage.read(key: _pinKey); return saved != null && saved == value; }
+
+  Future<bool> _tryBiometricUnlock() async {
+    if (!_biometricEnabled || _pinUnlocked || _biometricAttempted) return false;
+    _biometricAttempted = true;
+    final ok = await BiometricAuth.authenticate();
+    if (ok && mounted) setState(() => _pinUnlocked = true);
+    return ok;
+  }
 
   Future<void> _saveOrganization(String value) async {
     final normalized = value.trim();
@@ -168,7 +184,10 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     if (_pinLoading || _loadingOrganization) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    if (!_pinUnlocked) return PinUnlockPage(onUnlock: (pin) async { final ok = await _checkPin(pin); if (ok && mounted) setState(() => _pinUnlocked = true); return ok; });
+    if (!_pinUnlocked) return PinUnlockPage(
+      onUnlock: (pin) async { final ok = await _checkPin(pin); if (ok && mounted) setState(() => _pinUnlocked = true); return ok; },
+      onBiometricUnlock: _biometricEnabled ? _tryBiometricUnlock : null,
+    );
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -543,6 +562,7 @@ class _SettingsPageState extends State<SettingsPage> {
   static const _pinKey = 'it_master_app_pin';
   bool _pinEnabled = false;
   bool _notesPinEnabled = false;
+  bool _biometricEnabled = false;
   bool _pinReady = false;
 
   @override
@@ -556,11 +576,29 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _loadPinState() async {
     final pin = await _secureStorage.read(key: _pinKey);
     final notesPin = await _secureStorage.read(key: 'it_master_notes_pin');
+    final preferences = await SharedPreferences.getInstance();
+    final biometric = preferences.getBool('it_master_biometric_enabled') ?? false;
     if (mounted) setState(() {
       _pinEnabled = pin != null && pin.isNotEmpty;
       _notesPinEnabled = notesPin != null && notesPin.isNotEmpty;
+      _biometricEnabled = biometric;
       _pinReady = true;
     });
+  }
+
+  Future<void> _setBiometric(bool enabled) async {
+    if (enabled) {
+      final available = await BiometricAuth.isAvailable();
+      if (!available) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('На телефоне не настроен отпечаток пальца или распознавание лица. Сначала добавьте биометрию в настройках Android.')));
+        return;
+      }
+      final verified = await BiometricAuth.authenticate(reason: 'Проверьте биометрию для включения входа в IT-Мастер');
+      if (!verified) return;
+    }
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool('it_master_biometric_enabled', enabled);
+    if (mounted) setState(() => _biometricEnabled = enabled);
   }
 
   Future<String?> _askPin(String title) async {
@@ -738,6 +776,14 @@ class _SettingsPageState extends State<SettingsPage> {
               leading: const Icon(Icons.password),
               title: const Text('Изменить PIN-код'),
               onTap: _changePin,
+            ),
+          if (_pinEnabled || _notesPinEnabled)
+            SwitchListTile(
+              secondary: const Icon(Icons.fingerprint),
+              title: const Text('Разблокировка по биометрии'),
+              subtitle: const Text('Отпечаток пальца или лицо вместо PIN-кода, где он установлен'),
+              value: _biometricEnabled,
+              onChanged: _setBiometric,
             ),
           const Divider(height: 28),
           const Text('Защита личных заметок', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
@@ -960,7 +1006,8 @@ class _SummaryTile extends StatelessWidget {
 
 class PinUnlockPage extends StatefulWidget {
   final Future<bool> Function(String) onUnlock;
-  const PinUnlockPage({super.key, required this.onUnlock});
+  final Future<bool> Function()? onBiometricUnlock;
+  const PinUnlockPage({super.key, required this.onUnlock, this.onBiometricUnlock});
   @override
   State<PinUnlockPage> createState() => _PinUnlockPageState();
 }
@@ -989,6 +1036,14 @@ class _PinUnlockPageState extends State<PinUnlockPage> {
         TextField(controller: _controller, autofocus: true, obscureText: true, keyboardType: TextInputType.number,
           maxLength: 8, decoration: InputDecoration(labelText: 'PIN-код', errorText: _error, border: const OutlineInputBorder()),
           onSubmitted: (_) => _unlock()),
+        if (widget.onBiometricUnlock != null) ...[
+          SizedBox(width: double.infinity, child: OutlinedButton.icon(
+            onPressed: _checking ? null : () async { setState(() => _checking = true); await widget.onBiometricUnlock!(); if (mounted) setState(() => _checking = false); },
+            icon: const Icon(Icons.fingerprint),
+            label: const Text('Войти по биометрии'),
+          )),
+          const SizedBox(height: 8),
+        ],
         const SizedBox(height: 12),
         SizedBox(width: double.infinity, child: FilledButton(onPressed: _checking ? null : _unlock,
           child: _checking ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Разблокировать'))),
