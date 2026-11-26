@@ -542,6 +542,7 @@ class _SettingsPageState extends State<SettingsPage> {
   static const _secureStorage = FlutterSecureStorage();
   static const _pinKey = 'it_master_app_pin';
   bool _pinEnabled = false;
+  bool _notesPinEnabled = false;
   bool _pinReady = false;
 
   @override
@@ -554,7 +555,12 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _loadPinState() async {
     final pin = await _secureStorage.read(key: _pinKey);
-    if (mounted) setState(() { _pinEnabled = pin != null && pin.isNotEmpty; _pinReady = true; });
+    final notesPin = await _secureStorage.read(key: 'it_master_notes_pin');
+    if (mounted) setState(() {
+      _pinEnabled = pin != null && pin.isNotEmpty;
+      _notesPinEnabled = notesPin != null && notesPin.isNotEmpty;
+      _pinReady = true;
+    });
   }
 
   Future<String?> _askPin(String title) async {
@@ -610,6 +616,50 @@ class _SettingsPageState extends State<SettingsPage> {
     if (!await _verifyCurrentPin()) return;
     await _secureStorage.delete(key: _pinKey);
     if (mounted) setState(() => _pinEnabled = false);
+  }
+
+  Future<bool> _verifyNotesPin() async {
+    final current = await _askPin('Введите действующий PIN заметок');
+    if (current == null) return false;
+    final saved = await _secureStorage.read(key: 'it_master_notes_pin');
+    if (current != saved) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Неверный PIN заметок')));
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _enableNotesPin() async {
+    final pin = await _askPin('Установить отдельный PIN заметок');
+    if (pin == null) return;
+    final confirm = await _askPin('Повторите PIN заметок');
+    if (confirm == null) return;
+    if (pin != confirm) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PIN-коды не совпадают')));
+      return;
+    }
+    await _secureStorage.write(key: 'it_master_notes_pin', value: pin);
+    if (mounted) setState(() => _notesPinEnabled = true);
+  }
+
+  Future<void> _changeNotesPin() async {
+    if (!await _verifyNotesPin()) return;
+    final pin = await _askPin('Новый PIN заметок');
+    if (pin == null) return;
+    final confirm = await _askPin('Подтвердите новый PIN заметок');
+    if (confirm == null) return;
+    if (pin != confirm) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PIN-коды не совпадают')));
+      return;
+    }
+    await _secureStorage.write(key: 'it_master_notes_pin', value: pin);
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PIN заметок изменён')));
+  }
+
+  Future<void> _disableNotesPin() async {
+    if (!await _verifyNotesPin()) return;
+    await _secureStorage.delete(key: 'it_master_notes_pin');
+    if (mounted) setState(() => _notesPinEnabled = false);
   }
 
   @override
@@ -688,6 +738,29 @@ class _SettingsPageState extends State<SettingsPage> {
               leading: const Icon(Icons.password),
               title: const Text('Изменить PIN-код'),
               onTap: _changePin,
+            ),
+          const Divider(height: 28),
+          const Text('Защита личных заметок', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          SwitchListTile(
+            secondary: const Icon(Icons.note_alt_outlined),
+            title: const Text('Отдельный PIN для заметок'),
+            subtitle: Text(_notesPinEnabled
+                ? 'При каждом показе текста потребуется PIN заметок'
+                : 'Включите, чтобы скрыть пароли от посторонних'),
+            value: _notesPinEnabled,
+            onChanged: (enabled) {
+              if (enabled) {
+                _enableNotesPin();
+              } else {
+                _disableNotesPin();
+              }
+            },
+          ),
+          if (_notesPinEnabled)
+            ListTile(
+              leading: const Icon(Icons.password_outlined),
+              title: const Text('Изменить PIN заметок'),
+              onTap: _changeNotesPin,
             ),
           const SizedBox(height: 16),
           const ListTile(
