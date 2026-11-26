@@ -513,14 +513,26 @@ class _BackupPageState extends State<BackupPage> {
       final dbPath = p.join(await getDatabasesPath(), 'it_master_local.db');
       final source = File(dbPath);
       if (!await source.exists()) throw Exception('База данных ещё не создана.');
-      final dir = await getTemporaryDirectory();
-      final target = File(p.join(dir.path, 'IT-Master-backup-${DateTime.now().toIso8601String().replaceAll(':', '-')}.db'));
-      await source.copy(target.path);
-      await SharePlus.instance.share(ShareParams(files: [XFile(target.path)], text: 'Резервная копия IT-Мастер'));
-      if (mounted) setState(() => message = 'Файл резервной копии подготовлен для сохранения или отправки.');
+      final bytes = await source.readAsBytes();
+      final fileName = 'IT-Master-backup-${DateFormat('yyyy-MM-dd_HH-mm-ss').format(DateTime.now())}.db';
+      final savedPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Сохранить резервную копию IT-Мастер',
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: ['db'],
+        bytes: bytes,
+      );
+      if (mounted) {
+        setState(() => message = savedPath == null
+          ? 'Сохранение отменено. Резервная копия не создана.'
+          : 'Резервная копия сохранена. Файл: $savedPath');
+      }
     } catch (e) {
       if (mounted) setState(() => message = 'Ошибка создания копии: $e');
-    } finally { if (mounted) setState(() => busy = false); }
+    } finally {
+      try { await CartridgeDatabase.instance.database; } catch (_) {}
+      if (mounted) setState(() => busy = false);
+    }
   }
 
   Future<void> _restore() async {
