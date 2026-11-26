@@ -605,7 +605,7 @@ class _BackupPageState extends State<BackupPage> {
       const Icon(Icons.backup_outlined, size: 56),
       Card(child: Padding(padding: const EdgeInsets.all(14), child: Text(message))),
       const SizedBox(height: 12),
-      FilledButton.icon(onPressed: busy ? null : _backup, icon: const Icon(Icons.save_alt), label: Text(busy ? 'Подождите…' : 'Создать и отправить копию')),
+      FilledButton.icon(onPressed: busy ? null : _backup, icon: const Icon(Icons.save_alt), label: Text(busy ? 'Подождите…' : 'Сохранить копию на телефон')),
       const SizedBox(height: 8),
       OutlinedButton.icon(onPressed: busy ? null : _restore, icon: const Icon(Icons.restore), label: const Text('Восстановить из файла .db')),
     ]));
