@@ -637,7 +637,11 @@ class _CartridgeDetailsPageState extends State<CartridgeDetailsPage> {
               label: Text(status == 'Принят' ? 'Отправить на заправку' : 'Выдать сотруднику'),
             )
           else if (status == 'На заправке')
-            const Text('Ожидает получения из заправки'),
+            FilledButton.icon(
+              onPressed: () => _movement('Получение из заправки'),
+              icon: const Icon(Icons.inventory_2_outlined),
+              label: const Text('Получить из заправки'),
+            ),
           const SizedBox(height: 20),
           const _SectionTitle('История движения'),
           if (loading)
@@ -671,6 +675,8 @@ class _CartridgeMovementPageState extends State<CartridgeMovementPage> {
   bool saving = false;
 
   bool get isReturn => widget.type == 'Выдача';
+  bool get isRefillReceipt => widget.type == 'Получение из заправки';
+  bool get requiresSignature => isReturn || isRefillReceipt;
   DateTime movementDate = DateTime.now();
 
   @override
@@ -685,14 +691,14 @@ class _CartridgeMovementPageState extends State<CartridgeMovementPage> {
 
   Future<void> _save() async {
     if (!formKey.currentState!.validate()) return;
-    if (isReturn && signature.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Подпись получателя обязательна.')));
+    if (requiresSignature && signature.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isRefillReceipt ? 'Подпись принимающего обязательна.' : 'Подпись получателя обязательна.')));
       return;
     }
     setState(() => saving = true);
     try {
       String signatureData = '';
-      if (isReturn) {
+      if (requiresSignature) {
         final bytes = await signature.toPngBytes();
         if (bytes == null) throw Exception('Не удалось сохранить подпись');
         signatureData = base64Encode(bytes);
@@ -727,11 +733,13 @@ class _CartridgeMovementPageState extends State<CartridgeMovementPage> {
             Text(widget.type, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 14),
              _DateField(value: movementDate, onChanged: (v) => setState(() => movementDate = v)),
-            if (isReturn) ...[
-              _field(person, 'ФИО получателя'),
-              _field(department, 'Отделение получателя'),
-              const _SectionTitle('Подпись получателя'),
-              const Text('Выдача сохраняется только с подписью получателя.'),
+            if (isReturn || isRefillReceipt) ...[
+              _field(person, isRefillReceipt ? 'ФИО принимающего' : 'ФИО получателя'),
+              if (isReturn) _field(department, 'Отделение получателя'),
+              _SectionTitle(isRefillReceipt ? 'Подпись принимающего' : 'Подпись получателя'),
+              Text(isRefillReceipt
+                  ? 'Подпись сохранится отдельно в истории этого картриджа.'
+                  : 'Выдача сохраняется только с подписью получателя.'),
               const SizedBox(height: 8),
               _SignaturePad(controller: signature),
             ] else ...[
@@ -742,7 +750,7 @@ class _CartridgeMovementPageState extends State<CartridgeMovementPage> {
             FilledButton.icon(
               onPressed: saving ? null : _save,
               icon: saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save),
-              label: Text(saving ? 'Сохранение...' : isReturn ? 'Оформить выдачу' : 'Сохранить'),
+              label: Text(saving ? 'Сохранение...' : isReturn ? 'Оформить выдачу' : isRefillReceipt ? 'Подтвердить получение' : 'Сохранить'),
             ),
           ],
         ),
