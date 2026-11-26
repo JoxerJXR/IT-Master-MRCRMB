@@ -1053,7 +1053,7 @@ class _SignaturePad extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 175,
+      height: 230,
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border.all(color: Theme.of(context).colorScheme.outline),
@@ -1061,11 +1061,24 @@ class _SignaturePad extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Expanded(child: ClipRRect(borderRadius: BorderRadius.circular(12), child: Signature(controller: controller, backgroundColor: Colors.white))),
-          Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-            TextButton.icon(onPressed: () => controller.clear(), icon: const Icon(Icons.refresh, size: 18), label: const Text('Очистить')),
-            TextButton.icon(onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => _FullSignaturePage(controller: controller))), icon: const Icon(Icons.fullscreen), label: const Text('На весь экран')),
-          ]),
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Signature(
+                key: const ValueKey('single-signature-canvas'),
+                controller: controller,
+                backgroundColor: Colors.white,
+              ),
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: controller.clear,
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('Очистить подпись'),
+            ),
+          ),
         ],
       ),
     );
@@ -1090,60 +1103,6 @@ class _DateField extends StatelessWidget {
         if (time == null) return;
         onChanged(DateTime(day.year, day.month, day.day, time.hour, time.minute));
       },
-    ),
-  );
-}
-
-class _FullSignaturePage extends StatefulWidget {
-  final SignatureController controller;
-  const _FullSignaturePage({required this.controller});
-
-  @override
-  State<_FullSignaturePage> createState() => _FullSignaturePageState();
-}
-
-class _FullSignaturePageState extends State<_FullSignaturePage> {
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: const Text('Подпись — увеличенное поле'),
-      actions: [
-        IconButton(
-          tooltip: 'Очистить',
-          onPressed: () => widget.controller.clear(),
-          icon: const Icon(Icons.refresh),
-        ),
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Готово'),
-        ),
-      ],
-    ),
-    body: SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Center(
-          // Сохраняем пропорции обычного поля подписи: при возврате
-          // на предыдущий экран штрихи не выходят за границы холста.
-          child: AspectRatio(
-            aspectRatio: 2.8,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border.all(color: Colors.grey),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Signature(
-                  controller: widget.controller,
-                  backgroundColor: Colors.white,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
     ),
   );
 }
