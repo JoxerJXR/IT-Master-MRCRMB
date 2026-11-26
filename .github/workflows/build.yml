@@ -183,9 +183,9 @@ jobs:
       - name: Build versioned APK
         run: |
           flutter build apk --release \
-            --build-name=2.0.3 \
+            --build-name=2.0.4 \
             --build-number=${{ github.run_number }} \
-            --dart-define=APP_VERSION=2.0.3+${{ github.run_number }}
+            --dart-define=APP_VERSION=2.0.4+${{ github.run_number }}
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
