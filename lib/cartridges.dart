@@ -60,6 +60,14 @@ class CartridgeDatabase {
     return _database!;
   }
 
+  Future<void> deleteCartridge(int id) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('movements', where: 'cartridge_id = ?', whereArgs: [id]);
+      await txn.delete('cartridges', where: 'id = ?', whereArgs: [id]);
+    });
+  }
+
   Future<void> closeDatabase() async {
     final current = _database;
     if (current != null) {
@@ -735,6 +743,37 @@ class _CartridgeDetailsPageState extends State<CartridgeDetailsPage> {
     }
   }
 
+  Future<void> _deleteCartridge() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Удалить картридж?'),
+        content: Text(
+          'Картридж №${currentCartridge?['code'] ?? widget.cartridge['code']} будет удалён из списка вместе со всей историей его движения. Его номер можно будет использовать повторно, а старый QR-код перестанет открывать карточку.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Отмена')),
+          FilledButton.tonalIcon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await CartridgeDatabase.instance.deleteCartridge(id);
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Не удалось удалить картридж: $e')),
+      );
+    }
+  }
+
   Future<void> _movement(String type) async {
     final saved = await Navigator.push<bool>(
       context,
@@ -752,7 +791,16 @@ class _CartridgeDetailsPageState extends State<CartridgeDetailsPage> {
   Widget build(BuildContext context) {
     final item = currentCartridge ?? widget.cartridge;
     return Scaffold(
-      appBar: AppBar(title: const Text('Карточка картриджа')),
+      appBar: AppBar(
+        title: const Text('Карточка картриджа'),
+        actions: [
+          IconButton(
+            tooltip: 'Удалить картридж',
+            onPressed: _deleteCartridge,
+            icon: const Icon(Icons.delete_outline),
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
