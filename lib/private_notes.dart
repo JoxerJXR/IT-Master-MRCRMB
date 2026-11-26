@@ -78,8 +78,8 @@ class _PrivateNotesPageState extends State<PrivateNotesPage>{
     body:loading?const Center(child:CircularProgressIndicator()):ListView(padding:const EdgeInsets.all(16),children:[
       const Card(child:Padding(padding:EdgeInsets.all(12),child:Text('Здесь можно хранить Wi‑Fi сети, пароли, имена компьютеров и рабочие учётные записи. Данные сохраняются в защищённом хранилище Android на этом телефоне и не отправляются в GitHub. Не записывайте пароли от критически важных систем, если телефон не защищён PIN-кодом/биометрией.'))),
       const SizedBox(height:12),
-      TextField(controller:controller,minLines:12,maxLines:30,obscureText:!visible,decoration:const InputDecoration(labelText:'Мои записи',hintText:'Wi‑Fi: название сети…\nКомпьютер: имя / IP…\nУчётная запись: логин…',alignLabelWithHint:true,border:OutlineInputBorder())),
+      TextField(controller:controller,minLines:12,maxLines:30,readOnly:!visible,obscureText:!visible,decoration:InputDecoration(labelText:'Мои записи',hintText:visible?'Wi‑Fi: название сети…\nКомпьютер: имя / IP…\nУчётная запись: логин…':'Введите PIN заметок, чтобы просмотреть или изменить записи',alignLabelWithHint:true,border:const OutlineInputBorder(),prefixIcon:Icon(visible?Icons.lock_open:Icons.lock_outline))),
       SwitchListTile(contentPadding:EdgeInsets.zero,value:visible,onChanged:_setVisible,title:const Text('Показывать текст')),
-      FilledButton.icon(onPressed:saving?null:_save,icon:const Icon(Icons.lock),label:Text(saving?'Сохранение…':'Сохранить защищённые заметки')),
+      FilledButton.icon(onPressed:saving||!visible?null:_save,icon:const Icon(Icons.lock),label:Text(saving?'Сохранение…':visible?'Сохранить защищённые заметки':'Разблокируйте заметки для сохранения')),
     ]));
 }
