@@ -76,6 +76,7 @@ class _PrivateNotesPageState extends State<PrivateNotesPage> {
     }
 
     final controller = TextEditingController();
+    final entered = await showDialog<String>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
