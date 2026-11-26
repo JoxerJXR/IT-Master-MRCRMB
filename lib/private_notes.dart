@@ -2,6 +2,9 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'biometric_auth.dart';
 
 class PrivateNotesPage extends StatefulWidget {
   const PrivateNotesPage({super.key});
@@ -66,8 +69,13 @@ class _PrivateNotesPageState extends State<PrivateNotesPage> {
       return false;
     }
 
+    final preferences = await SharedPreferences.getInstance();
+    final biometricEnabled = preferences.getBool('it_master_biometric_enabled') ?? false;
+    if (biometricEnabled && await BiometricAuth.authenticate(reason: 'Подтвердите личность для доступа к личным заметкам')) {
+      return true;
+    }
+
     final controller = TextEditingController();
-    final entered = await showDialog<String>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
