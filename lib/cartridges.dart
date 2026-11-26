@@ -9,6 +9,10 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 
+class CartridgeCodeAlreadyExists implements Exception {
+  const CartridgeCodeAlreadyExists();
+}
+
 class CartridgeDatabase {
   CartridgeDatabase._();
   static final CartridgeDatabase instance = CartridgeDatabase._();
@@ -88,9 +92,27 @@ class CartridgeDatabase {
     );
   }
 
-  Future<void> updateCartridgeCode(int id, String code) async {
+  Future<bool> isCartridgeCodeTaken(String code, {int? exceptId}) async {
     final db = await database;
-    await db.update('cartridges', {'code': code.trim()}, where: 'id = ?', whereArgs: [id]);
+    final normalized = code.trim();
+    if (normalized.isEmpty) return false;
+    final rows = await db.query(
+      'cartridges',
+      columns: ['id'],
+      where: 'TRIM(code) = ? COLLATE NOCASE AND id != ?',
+      whereArgs: [normalized, exceptId ?? -1],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+
+  Future<void> updateCartridgeCode(int id, String code) async {
+    final normalized = code.trim();
+    if (await isCartridgeCodeTaken(normalized, exceptId: id)) {
+      throw const CartridgeCodeAlreadyExists();
+    }
+    final db = await database;
+    await db.update('cartridges', {'code': normalized}, where: 'id = ?', whereArgs: [id]);
   }
 
   Future<void> addCartridge({
@@ -103,6 +125,10 @@ class CartridgeDatabase {
     required String signature,
     DateTime? receivedAt,
   }) async {
+    final normalizedCode = code.trim();
+    if (await isCartridgeCodeTaken(normalizedCode)) {
+      throw const CartridgeCodeAlreadyExists();
+    }
     final db = await database;
     await db.transaction((txn) async {
       final now = (receivedAt ?? DateTime.now()).toIso8601String();
@@ -625,6 +651,12 @@ class _CartridgeIntakePageState extends State<CartridgeIntakePage> {
         receivedAt: receivedAt,
       );
       if (mounted) Navigator.pop(context, true);
+    } on CartridgeCodeAlreadyExists {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Такой номер занят')),
+        );
+      }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Ошибка сохранения: $e')));
     } finally {
@@ -721,8 +753,22 @@ class _CartridgeDetailsPageState extends State<CartridgeDetailsPage> {
     );
     controller.dispose();
     if (value == null || value.isEmpty) return;
-    await CartridgeDatabase.instance.updateCartridgeCode(id, value);
-    await _load();
+    try {
+      await CartridgeDatabase.instance.updateCartridgeCode(id, value);
+      await _load();
+    } on CartridgeCodeAlreadyExists {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Такой номер занят')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Не удалось изменить номер: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _movement(String type) async {
