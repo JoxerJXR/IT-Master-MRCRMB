@@ -65,12 +65,12 @@ jobs:
           )
           gradle_kts = Path("android/app/build.gradle.kts")
           gradle_groovy = Path("android/app/build.gradle")
-          kts_signing = """    val keystoreProperties = java.util.Properties()
+          kts_signing = """    val keystoreProperties = Properties()
               val keystorePropertiesFile = rootProject.file("key.properties")
               if (!keystorePropertiesFile.exists()) {
                   throw GradleException("Android signing properties were not created")
               }
-              keystoreProperties.load(java.io.FileInputStream(keystorePropertiesFile))
+              keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 
               signingConfigs {
                   create("release") {
@@ -86,6 +86,8 @@ jobs:
           if gradle_kts.exists():
               p = gradle_kts
               s = p.read_text()
+              if "import java.util.Properties" not in s:
+                  s = "import java.util.Properties\\nimport java.io.FileInputStream\\n\\n" + s
               marker = "    buildTypes {"
               if marker not in s:
                   raise SystemExit("Could not find buildTypes in build.gradle.kts")
