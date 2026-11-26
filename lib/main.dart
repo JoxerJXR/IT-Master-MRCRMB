@@ -64,7 +64,7 @@ class _MainScreenState extends State<MainScreen> {
   bool _pinLoading = true;
   bool _pinUnlocked = false;
   bool _biometricEnabled = false;
-  bool _biometricAttempted = false;
+  bool _biometricPromptInProgress = false;
   static const _secureStorage = FlutterSecureStorage();
   static const _pinKey = 'it_master_app_pin';
 
@@ -100,11 +100,15 @@ class _MainScreenState extends State<MainScreen> {
   Future<bool> _checkPin(String value) async { final saved = await _secureStorage.read(key: _pinKey); return saved != null && saved == value; }
 
   Future<bool> _tryBiometricUnlock() async {
-    if (!_biometricEnabled || _pinUnlocked || _biometricAttempted) return false;
-    _biometricAttempted = true;
-    final ok = await BiometricAuth.authenticate();
-    if (ok && mounted) setState(() => _pinUnlocked = true);
-    return ok;
+    if (!_biometricEnabled || _pinUnlocked || _biometricPromptInProgress) return false;
+    _biometricPromptInProgress = true;
+    try {
+      final ok = await BiometricAuth.authenticate();
+      if (ok && mounted) setState(() => _pinUnlocked = true);
+      return ok;
+    } finally {
+      _biometricPromptInProgress = false;
+    }
   }
 
   Future<void> _saveOrganization(String value) async {
