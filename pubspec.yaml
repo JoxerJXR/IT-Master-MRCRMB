@@ -2,7 +2,7 @@
 name: it_master
 description: Персональный помощник IT-специалиста МРЦРМБ
 publish_to: 'none'
-version: 2.0.1+81
+version: 2.0.2+82
 
 environment:
   sdk: '>=3.5.0 <4.0.0'
